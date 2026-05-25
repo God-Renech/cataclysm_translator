@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  runGeneratePoAction,
+  runGeneratePotAction,
+  runLoadPoAction,
+  runRegeneratePoAction,
   runBridgeInlineAction,
   runExtractPoToWorkspaceAction,
   runPreparePoAction,
@@ -105,4 +109,108 @@ test("runExtractPoToWorkspaceAction clears and rebuilds workspace from po segmen
   assert.equal(rows.length, 1);
   assert.deepEqual(events.slice(0, 4), ["clear", "usingModRun:A", "rebuild", "render:true"]);
   assert.equal(events.at(-1), "poAiStart:1");
+});
+
+test("runGeneratePotAction generates pot and reports output path", async () => {
+  const statuses = [];
+
+  await runGeneratePotAction({
+    cfg: { langDir: "L", langMode: "cbn", modDir: "mod-a", language: "zh_CN" },
+    translator: {
+      langGeneratePot: async () => "mod-a/lang/extracted_strings.pot",
+    },
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.path ?? ""}`,
+  });
+
+  assert.deepEqual(statuses, ["langPotDone:mod-a/lang/extracted_strings.pot"]);
+});
+
+test("runGeneratePoAction generates po for each mod and refreshes tabs", async () => {
+  const calls = [];
+  const tabs = [];
+  const statuses = [];
+
+  await runGeneratePoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    runMods: [{ path: "mod-a", name: "A" }, { path: "mod-b", name: "B" }],
+    translator: {
+      langGeneratePo: async (cfg) => {
+        calls.push(["po", cfg.modDir]);
+        return `${cfg.modDir}/lang.po`;
+      },
+      langReadPo: async (cfg) => `content:${cfg.modDir}`,
+    },
+    resolveCfgForMod: (cfg, modPath) => ({ ...cfg, modDir: modPath }),
+    upsertPoTab: (...args) => tabs.push(args),
+    renderPoTabs: () => calls.push(["render"]),
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.path ?? ""}`,
+  });
+
+  assert.deepEqual(calls, [["po", "mod-a"], ["po", "mod-b"], ["render"]]);
+  assert.deepEqual(tabs, [
+    ["mod-a", "zh_CN", "A", "content:mod-a", false],
+    ["mod-b", "zh_CN", "B", "content:mod-b", false],
+  ]);
+  assert.deepEqual(statuses, ["langPoDone:mod-a/lang.po", "langPoDone:mod-b/lang.po"]);
+});
+
+test("runRegeneratePoAction only rewrites confirmed mods", async () => {
+  const calls = [];
+  const tabs = [];
+  const statuses = [];
+
+  await runRegeneratePoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    runMods: [{ path: "mod-a", name: "A" }, { path: "mod-b", name: "B" }],
+    translator: {
+      langRegeneratePo: async (cfg) => {
+        calls.push(["rewrite", cfg.modDir]);
+        return `${cfg.modDir}/rewrite.po`;
+      },
+      langReadPo: async (cfg) => `content:${cfg.modDir}`,
+    },
+    resolveCfgForMod: (cfg, modPath) => ({ ...cfg, modDir: modPath }),
+    confirmRewrite: (message) => {
+      calls.push(["confirm", message]);
+      return message.includes("A");
+    },
+    upsertPoTab: (...args) => tabs.push(args),
+    renderPoTabs: () => calls.push(["render"]),
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.name ?? vars?.path ?? vars?.language ?? ""}`,
+  });
+
+  assert.deepEqual(calls, [
+    ["confirm", "langRewriteConfirm:A"],
+    ["rewrite", "mod-a"],
+    ["confirm", "langRewriteConfirm:B"],
+    ["render"],
+  ]);
+  assert.deepEqual(tabs, [["mod-a", "zh_CN", "A", "content:mod-a", false]]);
+  assert.deepEqual(statuses, ["langPoDone:mod-a/rewrite.po"]);
+});
+
+test("runLoadPoAction loads po content for each mod and reports follow-up steps", async () => {
+  const tabs = [];
+  const statuses = [];
+  const events = [];
+
+  await runLoadPoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    runMods: [{ path: "mod-a", name: "A" }],
+    translator: {
+      langReadPo: async (cfg) => `content:${cfg.modDir}`,
+    },
+    resolveCfgForMod: (cfg, modPath) => ({ ...cfg, modDir: modPath }),
+    upsertPoTab: (...args) => tabs.push(args),
+    renderPoTabs: () => events.push("render"),
+    setStatus: (message) => statuses.push(message),
+    rt: (key) => key,
+  });
+
+  assert.deepEqual(tabs, [["mod-a", "zh_CN", "A", "content:mod-a", false]]);
+  assert.deepEqual(events, ["render"]);
+  assert.deepEqual(statuses, ["langPoLoaded", "nextStepAfterLoadPo"]);
 });

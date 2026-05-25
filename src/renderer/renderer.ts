@@ -39,7 +39,11 @@ import {
 import {
   runBridgeInlineAction,
   runExtractPoToWorkspaceAction,
+  runGeneratePoAction,
+  runGeneratePotAction,
+  runLoadPoAction,
   runPreparePoAction,
+  runRegeneratePoAction,
 } from "./lang-actions.js";
 import {
   closePoTabState,
@@ -3569,12 +3573,12 @@ document.getElementById('genPotBtn')!.addEventListener('click', async () => {
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    const path = await translator.langGeneratePot(cfg);
-    setStatus(rt('langPotDone', { path }));
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  }
+  await runGeneratePotAction({
+    cfg,
+    translator,
+    setStatus,
+    rt,
+  });
 });
 
 document.getElementById('genPoBtn')!.addEventListener('click', async () => {
@@ -3587,19 +3591,16 @@ document.getElementById('genPoBtn')!.addEventListener('click', async () => {
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    const runMods = getRunMods(baseCfg.modDir);
-    for (const mod of runMods) {
-      const cfg = await resolveCfgForMod(baseCfg, mod.path);
-      const path = await translator.langGeneratePo(cfg);
-      const content = await translator.langReadPo(cfg);
-      upsertPoTab(mod.path, cfg.language, mod.name, content, false);
-      setStatus(rt('langPoDone', { path }));
-    }
-    renderPoTabs();
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  }
+  await runGeneratePoAction({
+    baseCfg,
+    runMods: getRunMods(baseCfg.modDir),
+    translator,
+    resolveCfgForMod,
+    upsertPoTab,
+    renderPoTabs,
+    setStatus,
+    rt,
+  });
 });
 
 document.getElementById('genPoRewriteBtn')!.addEventListener('click', async () => {
@@ -3612,21 +3613,17 @@ document.getElementById('genPoRewriteBtn')!.addEventListener('click', async () =
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    const runMods = getRunMods(baseCfg.modDir);
-    for (const mod of runMods) {
-      const cfg = await resolveCfgForMod(baseCfg, mod.path);
-      const confirmed = confirm(rt('langRewriteConfirm', { name: mod.name, language: cfg.language }));
-      if (!confirmed) continue;
-      const path = await translator.langRegeneratePo(cfg);
-      const content = await translator.langReadPo(cfg);
-      upsertPoTab(mod.path, cfg.language, mod.name, content, false);
-      setStatus(rt('langPoDone', { path }));
-    }
-    renderPoTabs();
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  }
+  await runRegeneratePoAction({
+    baseCfg,
+    runMods: getRunMods(baseCfg.modDir),
+    translator,
+    resolveCfgForMod,
+    confirmRewrite: (message) => confirm(message),
+    upsertPoTab,
+    renderPoTabs,
+    setStatus,
+    rt,
+  });
 });
 
 document.getElementById('loadPoBtn')!.addEventListener('click', async () => {
@@ -3639,19 +3636,16 @@ document.getElementById('loadPoBtn')!.addEventListener('click', async () => {
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    const runMods = getRunMods(baseCfg.modDir);
-    for (const mod of runMods) {
-      const cfg = await resolveCfgForMod(baseCfg, mod.path);
-      const content = await translator.langReadPo(cfg);
-      upsertPoTab(mod.path, cfg.language, mod.name, content, false);
-    }
-    renderPoTabs();
-    setStatus(rt('langPoLoaded'));
-    setStatus(rt('nextStepAfterLoadPo'));
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  }
+  await runLoadPoAction({
+    baseCfg,
+    runMods: getRunMods(baseCfg.modDir),
+    translator,
+    resolveCfgForMod,
+    upsertPoTab,
+    renderPoTabs,
+    setStatus,
+    rt,
+  });
 });
 
 document.getElementById('savePoBtn')!.addEventListener('click', async () => {

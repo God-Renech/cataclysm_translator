@@ -154,3 +154,94 @@ export async function runExtractPoToWorkspaceAction(options: {
     options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
   }
 }
+
+export async function runGeneratePotAction(options: {
+  cfg: LangWorkflowConfig;
+  translator: any;
+  setStatus: (message: string, append?: boolean) => void;
+  rt: (key: any, vars?: Record<string, string | number>) => string;
+}) {
+  try {
+    const path = await options.translator.langGeneratePot(options.cfg);
+    options.setStatus(options.rt("langPotDone", { path }));
+  } catch (error: any) {
+    options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
+  }
+}
+
+export async function runGeneratePoAction(options: {
+  baseCfg: LangWorkflowConfig;
+  runMods: ActionMod[];
+  translator: any;
+  resolveCfgForMod: (baseCfg: LangWorkflowConfig, modPath: string) => Promise<LangWorkflowConfig> | LangWorkflowConfig;
+  upsertPoTab: (modPath: string, language: string, name: string, content: string, dirty?: boolean) => void;
+  renderPoTabs: () => void;
+  setStatus: (message: string, append?: boolean) => void;
+  rt: (key: any, vars?: Record<string, string | number>) => string;
+}) {
+  try {
+    for (const mod of options.runMods) {
+      const cfg = await options.resolveCfgForMod(options.baseCfg, mod.path);
+      const path = await options.translator.langGeneratePo(cfg);
+      const content = await options.translator.langReadPo(cfg);
+      options.upsertPoTab(mod.path, cfg.language, mod.name, content, false);
+      options.setStatus(options.rt("langPoDone", { path }));
+    }
+    options.renderPoTabs();
+  } catch (error: any) {
+    options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
+  }
+}
+
+export async function runRegeneratePoAction(options: {
+  baseCfg: LangWorkflowConfig;
+  runMods: ActionMod[];
+  translator: any;
+  resolveCfgForMod: (baseCfg: LangWorkflowConfig, modPath: string) => Promise<LangWorkflowConfig> | LangWorkflowConfig;
+  confirmRewrite: (message: string) => boolean;
+  upsertPoTab: (modPath: string, language: string, name: string, content: string, dirty?: boolean) => void;
+  renderPoTabs: () => void;
+  setStatus: (message: string, append?: boolean) => void;
+  rt: (key: any, vars?: Record<string, string | number>) => string;
+}) {
+  try {
+    for (const mod of options.runMods) {
+      const cfg = await options.resolveCfgForMod(options.baseCfg, mod.path);
+      const confirmed = options.confirmRewrite(
+        options.rt("langRewriteConfirm", { name: mod.name, language: cfg.language }),
+      );
+      if (!confirmed) continue;
+      const path = await options.translator.langRegeneratePo(cfg);
+      const content = await options.translator.langReadPo(cfg);
+      options.upsertPoTab(mod.path, cfg.language, mod.name, content, false);
+      options.setStatus(options.rt("langPoDone", { path }));
+    }
+    options.renderPoTabs();
+  } catch (error: any) {
+    options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
+  }
+}
+
+export async function runLoadPoAction(options: {
+  baseCfg: LangWorkflowConfig;
+  runMods: ActionMod[];
+  translator: any;
+  resolveCfgForMod: (baseCfg: LangWorkflowConfig, modPath: string) => Promise<LangWorkflowConfig> | LangWorkflowConfig;
+  upsertPoTab: (modPath: string, language: string, name: string, content: string, dirty?: boolean) => void;
+  renderPoTabs: () => void;
+  setStatus: (message: string, append?: boolean) => void;
+  rt: (key: any, vars?: Record<string, string | number>) => string;
+}) {
+  try {
+    for (const mod of options.runMods) {
+      const cfg = await options.resolveCfgForMod(options.baseCfg, mod.path);
+      const content = await options.translator.langReadPo(cfg);
+      options.upsertPoTab(mod.path, cfg.language, mod.name, content, false);
+    }
+    options.renderPoTabs();
+    options.setStatus(options.rt("langPoLoaded"));
+    options.setStatus(options.rt("nextStepAfterLoadPo"));
+  } catch (error: any) {
+    options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
+  }
+}
