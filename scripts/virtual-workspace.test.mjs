@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { computeVirtualWindow } from "../tmp_virtual_test/virtual-workspace.js";
+import { computeVirtualWindow } from "../app/renderer/virtual-workspace.js";
 
 test("computeVirtualWindow returns a bounded initial range with overscan", () => {
   const result = computeVirtualWindow({

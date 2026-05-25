@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   parseRulePresets,
   DEFAULT_RULE_PRESETS,
-} from "../tmp_renderer_support/rule-presets.js";
+} from "../app/renderer/rule-presets.js";
 import {
   applyProviderDefaultsToSnapshot,
   buildRendererConfigSnapshot,
@@ -14,7 +14,7 @@ import {
   normalizeUiLang,
   resolvePromptLocale,
   saveStoredConfig,
-} from "../tmp_renderer_support/config-store.js";
+} from "../app/renderer/config-store.js";
 
 test("parseRulePresets merges builtins with stored presets", () => {
   const parsed = parseRulePresets(

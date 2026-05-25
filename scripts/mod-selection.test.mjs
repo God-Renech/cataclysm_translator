@@ -5,7 +5,7 @@ import {
   applyCheckedStateToCheckboxes,
   clearModPathSelection,
   selectAllModPaths,
-} from "../tmp_mod_selection/mod-selection.js";
+} from "../app/renderer/mod-selection.js";
 
 test("selectAllModPaths returns every mod path", () => {
   const selected = selectAllModPaths([

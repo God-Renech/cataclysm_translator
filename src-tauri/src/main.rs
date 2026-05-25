@@ -88,7 +88,7 @@ struct ScannedFile {
 }
 
 fn read_text_file_with_fallback(path: &Path) -> Result<String, String> {
-    let bytes = fs::read(path).map_err(|e| format!("璇诲彇鏂囦欢澶辫触: {}", e))?;
+    let bytes = fs::read(path).map_err(|e| format!("读取文件失败: {}", e))?;
     if let Ok(text) = String::from_utf8(bytes.clone()) {
         return Ok(text);
     }
@@ -121,10 +121,10 @@ fn decode_command_output(bytes: &[u8]) -> String {
 fn scan_files(dir: &str) -> Result<(Vec<ScannedFile>, Vec<ScanError>), String> {
     let root = Path::new(dir);
     if !root.exists() {
-        return Err(format!("鐩綍涓嶅瓨鍦? {}", root.display()));
+        return Err(format!("目录不存在: {}", root.display()));
     }
     if !root.is_dir() {
-        return Err(format!("璺緞涓嶆槸鐩綍: {}", root.display()));
+        return Err(format!("路径不是目录: {}", root.display()));
     }
     let mut out = Vec::new();
     let mut errors = Vec::new();
@@ -152,7 +152,7 @@ fn scan_files(dir: &str) -> Result<(Vec<ScannedFile>, Vec<ScanError>), String> {
             Err(e) => {
                 errors.push(ScanError {
                     file: p.to_string_lossy().to_string(),
-                    message: format!("璇诲彇鏂囦欢澶辫触: {}", e),
+                    message: format!("读取文件失败: {}", e),
                 });
             }
         }
@@ -353,7 +353,7 @@ fn post_process_generated_pot_plural_override(
     let rewritten = apply_plural_override_to_pot_text(&content, &candidates);
     if rewritten != content {
         fs::write(pot_file, rewritten)
-            .map_err(|e| format!("閸愭瑥鍙?POT 閸氬骸顦╅悶鍡樻瀮娴犺泛銇戠拹?{}: {}", pot_file.display(), e))?;
+            .map_err(|e| format!("写回 POT 失败 {}: {}", pot_file.display(), e))?;
     }
     Ok(())
 }
@@ -400,7 +400,7 @@ fn validate_json_files_for_pot(mod_dir: &str) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "妫€娴嬪埌 {} 涓潪娉?JSON 鏂囦欢锛孭OT 鎻愬彇宸蹭腑姝€俓n{}",
+        "检测到 {} 个非法 JSON 文件，POT 提取已中止。\n{}",
         errors.len(),
         errors.join("\n")
     ))
@@ -448,7 +448,7 @@ fn push_segment(segs: &mut Vec<Segment>, rule: &Rule, file_path: &str, path: Vec
 }
 
 fn extract_from_json(content: &str, file_path: &str, rule: &Rule) -> Result<Vec<Segment>, String> {
-    let root: Value = serde_json::from_str(content).map_err(|e| format!("JSON 瑙ｆ瀽澶辫触: {}", e))?;
+    let root: Value = serde_json::from_str(content).map_err(|e| format!("JSON 解析失败: {}", e))?;
     let mut segs = Vec::new();
     let include_key_re = rule
         .include_key_regex
@@ -621,7 +621,7 @@ fn extract_from_json(content: &str, file_path: &str, rule: &Rule) -> Result<Vec<
 
 fn extract_from_text(content: &str, file_path: &str, rule: &Rule) -> Result<Vec<Segment>, String> {
     let regex = if let Some(s) = &rule.regex {
-        Regex::new(s).map_err(|e| format!("鏂囨湰姝ｅ垯鏃犳晥: {}", e))?
+        Regex::new(s).map_err(|e| format!("文本正则无效: {}", e))?
     } else {
         Regex::new(r"[^\r\n]+").map_err(|e| e.to_string())?
     };
@@ -644,7 +644,7 @@ fn extract_from_text(content: &str, file_path: &str, rule: &Rule) -> Result<Vec<
 }
 
 fn write_back_json(content: &str, translations: &HashMap<String, String>, file_path: &str) -> Result<String, String> {
-    let mut root: Value = serde_json::from_str(content).map_err(|e| format!("JSON 瑙ｆ瀽澶辫触: {}", e))?;
+    let mut root: Value = serde_json::from_str(content).map_err(|e| format!("JSON 解析失败: {}", e))?;
     fn apply(value: &mut Value, path: &mut Vec<String>, translations: &HashMap<String, String>, file_path: &str) {
         match value {
             Value::Array(arr) => {
@@ -681,7 +681,7 @@ fn write_back_json(content: &str, translations: &HashMap<String, String>, file_p
 
 fn write_back_text(content: &str, translations: &HashMap<String, String>, file_path: &str, regex_source: &Option<String>) -> Result<String, String> {
     let regex = if let Some(s) = regex_source {
-        Regex::new(s).map_err(|e| format!("鏂囨湰姝ｅ垯鏃犳晥: {}", e))?
+        Regex::new(s).map_err(|e| format!("文本正则无效: {}", e))?
     } else {
         Regex::new(r"[^\r\n]+").map_err(|e| e.to_string())?
     };
@@ -716,7 +716,9 @@ fn parse_translation_response(content: &str, original_segments: &[Segment]) -> R
             json_str = json_str[start..=end].to_string();
         }
     }
-    let parsed: Value = serde_json::from_str(&json_str).or_else(|_| serde_json::from_str(content)).map_err(|e| format!("瑙ｆ瀽杩斿洖 JSON 澶辫触: {}", e))?;
+    let parsed: Value = serde_json::from_str(&json_str)
+        .or_else(|_| serde_json::from_str(content))
+        .map_err(|e| format!("解析返回 JSON 失败: {}", e))?;
     let items = if parsed.is_array() {
         parsed.as_array().cloned().unwrap_or_default()
     } else if parsed.is_object() {
@@ -785,7 +787,7 @@ fn get_http_client(timeout_ms: u64) -> Result<Client, String> {
     let pool = HTTP_CLIENT_POOL.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guard = pool
         .lock()
-        .map_err(|e| format!("HTTP 瀹㈡埛绔睜鍔犻攣澶辫触: {}", e))?;
+        .map_err(|e| format!("HTTP 客户端池加锁失败: {}", e))?;
     if let Some(client) = guard.get(&timeout_ms) {
         return Ok(client.clone());
     }
@@ -794,7 +796,7 @@ fn get_http_client(timeout_ms: u64) -> Result<Client, String> {
         .pool_max_idle_per_host(16)
         .tcp_nodelay(true)
         .build()
-        .map_err(|e| format!("HTTP 瀹㈡埛绔垵濮嬪寲澶辫触: {}", e))?;
+        .map_err(|e| format!("HTTP 客户端初始化失败: {}", e))?;
     guard.insert(timeout_ms, client.clone());
     Ok(client)
 }
@@ -925,13 +927,13 @@ async fn translate_batch_inner(segments: Vec<Segment>, config: ApiConfig) -> Res
         let request_ms = request_start.elapsed().as_millis();
         let status = res.status();
         let body_start = Instant::now();
-        let raw_text = res.text().await.map_err(|e| format!("Gemini 璇诲彇鍝嶅簲澶辫触: {}", e))?;
+        let raw_text = res.text().await.map_err(|e| format!("Gemini 读取响应失败: {}", e))?;
         let body_ms = body_start.elapsed().as_millis();
         if !status.is_success() {
             return Err(format!("Gemini HTTP {} {}", status, raw_text));
         }
         let parse_json_start = Instant::now();
-        let data: Value = serde_json::from_str(&raw_text).map_err(|e| format!("Gemini 杩斿洖 JSON 鏃犳晥: {}", e))?;
+        let data: Value = serde_json::from_str(&raw_text).map_err(|e| format!("Gemini 返回 JSON 无效: {}", e))?;
         let parse_json_ms = parse_json_start.elapsed().as_millis();
         let content = data
             .get("candidates")
@@ -1004,13 +1006,14 @@ async fn translate_batch_inner(segments: Vec<Segment>, config: ApiConfig) -> Res
     let request_ms = request_start.elapsed().as_millis();
     let status = res.status();
     let body_start = Instant::now();
-    let raw_text = res.text().await.map_err(|e| format!("璇诲彇鍝嶅簲澶辫触: {}", e))?;
+    let raw_text = res.text().await.map_err(|e| format!("读取响应失败: {}", e))?;
     let body_ms = body_start.elapsed().as_millis();
     if !status.is_success() {
-        return Err(format!("OpenAI 鍏煎 HTTP {} {}", status, raw_text));
+        return Err(format!("OpenAI 兼容 HTTP {} {}", status, raw_text));
     }
     let parse_json_start = Instant::now();
-    let data: Value = serde_json::from_str(&raw_text).map_err(|e| format!("OpenAI 鍏煎杩斿洖 JSON 鏃犳晥: {}", e))?;
+    let data: Value = serde_json::from_str(&raw_text)
+        .map_err(|e| format!("OpenAI 兼容返回 JSON 无效: {}", e))?;
     let parse_json_ms = parse_json_start.elapsed().as_millis();
     let content = data
         .get("choices")
@@ -1204,12 +1207,12 @@ fn run_cmd_with_cwd(program: &Path, args: &[String], cwd: Option<&Path>, pythonp
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
     let out = cmd.output()
-        .map_err(|e| format!("鍛戒护鎵ц澶辫触 {}: {}", program.display(), e))?;
+        .map_err(|e| format!("命令执行失败 {}: {}", program.display(), e))?;
     if !out.status.success() {
         let stderr = decode_command_output(&out.stderr);
         let stdout = decode_command_output(&out.stdout);
         return Err(format!(
-            "鍛戒护鎵ц澶辫触 {} {:?}\nstdout:\n{}\nstderr:\n{}",
+            "命令执行失败 {} {:?}\nstdout:\n{}\nstderr:\n{}",
             program.display(),
             args,
             stdout,
@@ -1240,7 +1243,7 @@ fn ensure_python_module(python: &Path, module: &str) -> Result<(), String> {
         let _ = run_cmd(python, &ensurepip_args);
         run_cmd(python, &install_args).map_err(|e| {
             format!(
-                "鑷姩瀹夎 Python 妯″潡 {} 澶辫触锛岃妫€鏌?Python/pip 鎴栫綉缁滃彲鐢ㄦ€с€俓n{}",
+                "自动安装 Python 模块 {} 失败，请检查 Python/pip 或网络是否可用。\n{}",
                 module,
                 e
             )
@@ -1248,7 +1251,7 @@ fn ensure_python_module(python: &Path, module: &str) -> Result<(), String> {
     }
     run_cmd(python, &check_args)
         .map(|_| ())
-        .map_err(|e| format!("Python 妯″潡 {} 瀹夎鍚庢牎楠屽け璐ワ細{}", module, e))
+        .map_err(|e| format!("Python 模块 {} 安装后校验失败：{}", module, e))
 }
 
 fn ensure_polib(python: &Path) -> Result<(), String> {
@@ -1367,7 +1370,7 @@ po.save(po_path)
     ];
     run_cmd(&python, &args)
         .map(|_| ())
-        .map_err(|e| format!("鏍囧噯鍖?PO 澶辫触 {}: {}", po_file.display(), e))
+        .map_err(|e| format!("标准化 PO 失败 {}: {}", po_file.display(), e))
 }
 
 fn lang_normalize_po_file(config: &LangWorkflowConfig, po_file: &Path) -> Result<(), String> {
@@ -1387,11 +1390,11 @@ meta = dict(po.metadata or {})
 errors = []
 content_type = str(meta.get("Content-Type", "") or "").strip().lower()
 if "charset=utf-8" not in content_type:
-    errors.append("缂哄皯 Content-Type 鎴?charset=UTF-8")
+errors.append("缺少 Content-Type 或 charset=UTF-8")
 plural_forms = str(meta.get("Plural-Forms", "") or "").strip()
 match = re.search(r"nplurals\s*=\s*(\d+)", plural_forms)
 if not match:
-    errors.append("缂哄皯鎴栨棤娉曡В鏋?Plural-Forms nplurals")
+    errors.append("缺少或无法解析 Plural-Forms nplurals")
     nplurals = 2
 else:
     nplurals = int(match.group(1))
@@ -1401,7 +1404,7 @@ for e in po:
     mp = {str(k): str(v or "") for k, v in dict(e.msgstr_plural or {}).items()}
     missing = [str(i) for i in range(nplurals) if str(i) not in mp]
     if missing:
-        errors.append(f"澶嶆暟鏉＄洰缂哄皯 msgstr 绱㈠紩 {','.join(missing)}: {str(e.msgid or '')[:80]}")
+        errors.append(f"复数条目缺少 msgstr 索引 {','.join(missing)}: {str(e.msgid or '')[:80]}")
 if errors:
     raise SystemExit("\n".join(errors))
 "#
@@ -1413,7 +1416,7 @@ if errors:
     ];
     run_cmd(&python, &args)
         .map(|_| ())
-        .map_err(|e| format!("PO 鏍￠獙澶辫触 {}:\n{}", po_file.display(), e))
+        .map_err(|e| format!("PO 校验失败 {}:\n{}", po_file.display(), e))
 }
 
 fn extract_missing_python_module(err_text: &str) -> Option<String> {
@@ -1799,12 +1802,12 @@ fn lang_generate_pot_cdda(
                 if extract_unsupported_option(&e).is_some() {
                     break;
                 }
-                return Err(format!("鎻愬彇 POT 澶辫触锛氬缃剼鏈墽琛屽紓甯搞€俓n{}", e));
+                return Err(format!("提取 POT 失败：外置脚本执行异常。\n{}", e));
             }
         }
     }
     Err(format!(
-        "鎻愬彇 POT 澶辫触锛氬缃剼鏈墽琛屽紓甯搞€俓n{}",
+        "提取 POT 失败：外置脚本执行异常。\n{}",
         last_error
     ))
 }
@@ -1836,8 +1839,8 @@ fn lang_po_file(mod_dir: &str, language: &str) -> PathBuf {
 fn read_mod_id_from_modinfo(mod_dir: &str) -> Result<String, String> {
     let modinfo = PathBuf::from(mod_dir).join("modinfo.json");
     if modinfo.exists() {
-        let text = fs::read_to_string(&modinfo)
-            .map_err(|e| format!("璇诲彇 modinfo 澶辫触 {}: {}", modinfo.display(), e))?;
+        let text =
+            fs::read_to_string(&modinfo).map_err(|e| format!("读取 modinfo 失败 {}: {}", modinfo.display(), e))?;
         if let Ok(value) = serde_json::from_str::<Value>(&text) {
             if let Some(arr) = value.as_array() {
                 for item in arr {
@@ -1876,28 +1879,28 @@ fn detect_lang_mode_from_config(config: &LangWorkflowConfig) -> String {
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     if dst.exists() {
         fs::remove_dir_all(dst)
-            .map_err(|e| format!("娓呯悊杈撳嚭鐩綍澶辫触 {}: {}", dst.display(), e))?;
+            .map_err(|e| format!("清理输出目录失败 {}: {}", dst.display(), e))?;
     }
     fs::create_dir_all(dst)
-        .map_err(|e| format!("鍒涘缓杈撳嚭鐩綍澶辫触 {}: {}", dst.display(), e))?;
+        .map_err(|e| format!("创建输出目录失败 {}: {}", dst.display(), e))?;
     for entry in WalkDir::new(src).into_iter().filter_map(Result::ok) {
         let rel = entry
             .path()
             .strip_prefix(src)
-            .map_err(|e| format!("璁＄畻鐩稿璺緞澶辫触: {}", e))?;
+            .map_err(|e| format!("计算相对路径失败: {}", e))?;
         let out_path = dst.join(rel);
         if entry.file_type().is_dir() {
             fs::create_dir_all(&out_path)
-                .map_err(|e| format!("鍒涘缓鐩綍澶辫触 {}: {}", out_path.display(), e))?;
+                .map_err(|e| format!("创建目录失败 {}: {}", out_path.display(), e))?;
             continue;
         }
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent)
-                .map_err(|e| format!("鍒涘缓鐩綍澶辫触 {}: {}", parent.display(), e))?;
+                .map_err(|e| format!("创建目录失败 {}: {}", parent.display(), e))?;
         }
         fs::copy(entry.path(), &out_path).map_err(|e| {
             format!(
-                "澶嶅埗鏂囦欢澶辫触 {} -> {}: {}",
+                "复制文件失败 {} -> {}: {}",
                 entry.path().display(),
                 out_path.display(),
                 e
@@ -1927,7 +1930,7 @@ fn lang_scan_mods(root_dir: String) -> Result<Vec<ModItem>, String> {
             None => continue,
         };
         let content = fs::read_to_string(&modinfo_path)
-            .map_err(|e| format!("璇诲彇 modinfo 澶辫触 {}: {}", modinfo_path.display(), e))?;
+            .map_err(|e| format!("读取 modinfo 失败 {}: {}", modinfo_path.display(), e))?;
         let mut mod_id = String::new();
         let mut mod_name = String::new();
         if let Ok(value) = serde_json::from_str::<Value>(&content) {
@@ -1987,7 +1990,7 @@ fn lang_extract_po_segments(config: LangWorkflowConfig) -> Result<Vec<Segment>, 
     let po_file = lang_po_file(&config.mod_dir, &config.language);
     let single_plural = is_single_plural_language(&config.language);
     if !po_file.exists() {
-        return Err(format!("PO 鏂囦欢涓嶅瓨鍦? {}", po_file.display()));
+        return Err(format!("PO 文件不存在: {}", po_file.display()));
     }
     let python = resolve_python_exe(config.python_path.clone());
     ensure_polib(&python)?;
@@ -2027,7 +2030,7 @@ print(json.dumps(arr, ensure_ascii=False))
         if single_plural { "1".to_string() } else { "0".to_string() },
     ];
     let out = run_cmd(&python, &args)?;
-    let parsed: Vec<Value> = serde_json::from_str(&out).map_err(|e| format!("瑙ｆ瀽 PO 鏉＄洰澶辫触: {}", e))?;
+    let parsed: Vec<Value> = serde_json::from_str(&out).map_err(|e| format!("解析 PO 条目失败: {}", e))?;
     let mut segs = Vec::new();
     let po_path = po_file.to_string_lossy().to_string();
     for item in parsed {
@@ -2051,7 +2054,7 @@ print(json.dumps(arr, ensure_ascii=False))
 fn lang_apply_po_translations(config: LangWorkflowConfig, translations: Vec<TranslationInput>) -> Result<usize, String> {
     let po_file = lang_po_file(&config.mod_dir, &config.language);
     if !po_file.exists() {
-        return Err(format!("PO 鏂囦欢涓嶅瓨鍦? {}", po_file.display()));
+        return Err(format!("PO 文件不存在: {}", po_file.display()));
     }
     let python = resolve_python_exe(config.python_path.clone());
     ensure_polib(&python)?;
@@ -2067,8 +2070,9 @@ fn lang_apply_po_translations(config: LangWorkflowConfig, translations: Vec<Tran
             target: t.target,
         });
     }
-    let payload = serde_json::to_string(&cleaned).map_err(|e| format!("搴忓垪鍖栫炕璇戠粨鏋滃け璐? {}", e))?;
-    fs::write(&temp_json, payload).map_err(|e| format!("鍐欏叆涓存椂缈昏瘧鏂囦欢澶辫触 {}: {}", temp_json.display(), e))?;
+    let payload = serde_json::to_string(&cleaned).map_err(|e| format!("序列化翻译结果失败: {}", e))?;
+    fs::write(&temp_json, payload)
+        .map_err(|e| format!("写入临时翻译文件失败 {}: {}", temp_json.display(), e))?;
     let py_code = r#"
 import json,sys
 import polib
@@ -2117,7 +2121,7 @@ fn export_files(dir: String, translations: Vec<TranslationInput>, out_dir: Strin
     if !read_errors.is_empty() {
         let first = &read_errors[0];
         return Err(format!(
-            "瀵煎嚭鍓嶈鍙栨簮鏂囦欢澶辫触锛屽叡 {} 涓€傞涓け璐ユ枃浠讹細{}锛屽師鍥狅細{}",
+            "导出前读取源文件失败，共 {} 个。首个失败文件：{}，原因：{}",
             read_errors.len(),
             first.file,
             first.message
@@ -2127,21 +2131,21 @@ fn export_files(dir: String, translations: Vec<TranslationInput>, out_dir: Strin
     for t in translations {
         map.insert(t.id, t.target);
     }
-    fs::create_dir_all(&out_dir).map_err(|e| format!("鍒涘缓瀵煎嚭鐩綍澶辫触: {}", e))?;
+    fs::create_dir_all(&out_dir).map_err(|e| format!("创建导出目录失败: {}", e))?;
     for f in files {
         let rel = Path::new(&f.path)
             .strip_prefix(Path::new(&dir))
-            .map_err(|e| format!("璁＄畻鐩稿璺緞澶辫触: {}", e))?;
+            .map_err(|e| format!("计算相对路径失败: {}", e))?;
         let out_path = PathBuf::from(&out_dir).join(rel);
         if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("鍒涘缓鐩綍澶辫触 {}: {}", parent.display(), e))?;
+            fs::create_dir_all(parent).map_err(|e| format!("创建目录失败 {}: {}", parent.display(), e))?;
         }
         let out = if f.kind == "json" {
             write_back_json(&f.content, &map, &f.path)?
         } else {
             write_back_text(&f.content, &map, &f.path, &rule.regex)?
         };
-        fs::write(&out_path, out).map_err(|e| format!("鍐欏叆鏂囦欢澶辫触 {}: {}", out_path.display(), e))?;
+        fs::write(&out_path, out).map_err(|e| format!("写入文件失败 {}: {}", out_path.display(), e))?;
     }
     Ok(true)
 }
@@ -2377,7 +2381,7 @@ fn lang_compile_mo(config: LangWorkflowConfig) -> Result<String, String> {
 fn lang_cleanup_po_plural(config: LangWorkflowConfig) -> Result<usize, String> {
     let po_file = lang_po_file(&config.mod_dir, &config.language);
     if !po_file.exists() {
-        return Err(format!("PO 鏂囦欢涓嶅瓨鍦? {}", po_file.display()));
+        return Err(format!("PO 文件不存在: {}", po_file.display()));
     }
     let python = resolve_python_exe(config.python_path.clone());
     ensure_polib(&python)?;
@@ -2439,7 +2443,7 @@ fn lang_bridge_inline_to_lang(
     lang_generate_po(config.clone())?;
     let po_file = lang_po_file(&config.mod_dir, &config.language);
     if !po_file.exists() {
-        return Err(format!("PO 鏂囦欢涓嶅瓨鍦? {}", po_file.display()));
+        return Err(format!("PO 文件不存在: {}", po_file.display()));
     }
     let single_plural = is_single_plural_language(&config.language);
     let python = resolve_python_exe(config.python_path.clone());
@@ -2705,7 +2709,7 @@ print(json.dumps({
     ];
     let out = run_cmd(&python, &args)?;
     let report: Value =
-        serde_json::from_str(out.trim()).map_err(|e| format!("瑙ｆ瀽杩佺Щ鎶ュ憡澶辫触: {}", e))?;
+        serde_json::from_str(out.trim()).map_err(|e| format!("解析迁移报告失败: {}", e))?;
     let mo_path = lang_compile_mo(config.clone())?;
     let filled_msgstr_count = report
         .get("filledMsgstrCount")
@@ -2766,15 +2770,15 @@ fn lang_bridge_po_to_code(
     output_dir: String,
 ) -> Result<BridgePoToCodeReport, String> {
     if output_dir.trim().is_empty() {
-        return Err("杈撳嚭鐩綍涓嶈兘涓虹┖".to_string());
+        return Err("输出目录不能为空".to_string());
     }
     let src_mod = PathBuf::from(&config.mod_dir);
     if !src_mod.exists() {
-        return Err(format!("MOD 鐩綍涓嶅瓨鍦? {}", src_mod.display()));
+        return Err(format!("MOD 目录不存在: {}", src_mod.display()));
     }
     let po_file = lang_po_file(&config.mod_dir, &config.language);
     if !po_file.exists() {
-        return Err(format!("PO 鏂囦欢涓嶅瓨鍦? {}", po_file.display()));
+        return Err(format!("PO 文件不存在: {}", po_file.display()));
     }
     let out_path = PathBuf::from(&output_dir);
     copy_dir_recursive(&src_mod, &out_path)?;
@@ -2887,7 +2891,7 @@ print(json.dumps({
     ];
     let out = run_cmd(&python, &args)?;
     let report: Value =
-        serde_json::from_str(out.trim()).map_err(|e| format!("瑙ｆ瀽鍙嶅悜杞崲鎶ュ憡澶辫触: {}", e))?;
+        serde_json::from_str(out.trim()).map_err(|e| format!("解析反向转换报告失败: {}", e))?;
     Ok(BridgePoToCodeReport {
         output_dir,
         po_path: po_file.to_string_lossy().to_string(),
@@ -2917,10 +2921,10 @@ fn select_folder() -> Result<Option<String>, String> {
 }
 
 fn user_config_path() -> Result<PathBuf, String> {
-    let exe = env::current_exe().map_err(|e| format!("鑾峰彇绋嬪簭璺緞澶辫触: {}", e))?;
+    let exe = env::current_exe().map_err(|e| format!("获取程序路径失败: {}", e))?;
     let dir = exe
         .parent()
-        .ok_or_else(|| "鏃犳硶鑾峰彇绋嬪簭鐩綍".to_string())?;
+        .ok_or_else(|| "无法获取程序目录".to_string())?;
     Ok(dir.join("user_config.json"))
 }
 
@@ -2930,25 +2934,24 @@ fn load_user_config() -> Result<Option<String>, String> {
     if !path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("璇诲彇鐢ㄦ埛閰嶇疆澶辫触 {}: {}", path.display(), e))?;
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("读取用户配置失败 {}: {}", path.display(), e))?;
     Ok(Some(content))
 }
 
 #[tauri::command]
 fn save_user_config(content: String) -> Result<String, String> {
     let path = user_config_path()?;
-    let mut root = serde_json::from_str::<Value>(&content)
-        .map_err(|e| format!("鐢ㄦ埛閰嶇疆 JSON 鏃犳晥: {}", e))?;
+    let mut root =
+        serde_json::from_str::<Value>(&content).map_err(|e| format!("用户配置 JSON 无效: {}", e))?;
     if let Some(config) = root.get_mut("config").and_then(Value::as_object_mut) {
         let remember_key = config.get("rememberKey").and_then(Value::as_bool).unwrap_or(false);
         if !remember_key {
             config.insert("apiKey".to_string(), Value::String(String::new()));
         }
     }
-    let serialized = serde_json::to_string(&root).map_err(|e| format!("搴忓垪鍖栫敤鎴烽厤缃け璐? {}", e))?;
-    fs::write(&path, serialized)
-        .map_err(|e| format!("鍐欏叆鐢ㄦ埛閰嶇疆澶辫触 {}: {}", path.display(), e))?;
+    let serialized = serde_json::to_string(&root).map_err(|e| format!("序列化用户配置失败: {}", e))?;
+    fs::write(&path, serialized).map_err(|e| format!("写入用户配置失败 {}: {}", path.display(), e))?;
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -3164,5 +3167,101 @@ mod tests {
 
         assert_eq!(id, "demo_mod");
         let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn scan_files_reports_readable_missing_directory_error() {
+        let missing = std::env::temp_dir().join(format!(
+            "cataclysm_translator_missing_dir_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&missing);
+
+        let error = scan_files(missing.to_string_lossy().as_ref()).unwrap_err();
+
+        assert!(error.contains("目录不存在"));
+    }
+
+    #[test]
+    fn run_cmd_reports_readable_process_errors() {
+        let error = run_cmd(Path::new("Z:\\definitely-missing-tool.exe"), &[]).unwrap_err();
+
+        assert!(error.contains("命令执行失败"));
+    }
+
+    #[test]
+    fn lang_extract_po_segments_reports_readable_missing_po_error() {
+        let config = LangWorkflowConfig {
+            lang_dir: String::new(),
+            lang_mode: Some(String::from("cbn")),
+            mod_dir: String::from("E:\\mods\\demo"),
+            language: String::from("zh_CN"),
+            no_str_pl_no_s: false,
+            python_path: None,
+            gettext_path: None,
+        };
+
+        let error = lang_extract_po_segments(config).unwrap_err();
+
+        assert!(error.contains("PO 文件不存在"));
+    }
+
+    #[test]
+    fn write_back_json_reports_readable_parse_error() {
+        let error = write_back_json("{", &HashMap::new(), "broken.json").unwrap_err();
+
+        assert!(error.contains("JSON 解析失败"));
+    }
+
+    #[test]
+    fn parse_translation_response_reports_readable_json_error() {
+        let error = parse_translation_response("not json", &[]).unwrap_err();
+
+        assert!(error.contains("解析返回 JSON 失败"));
+    }
+
+    #[test]
+    fn read_mod_id_from_modinfo_reports_readable_read_error() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "cataclysm_translator_modinfo_read_error_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&temp_root);
+        fs::create_dir_all(temp_root.join("modinfo.json")).unwrap();
+
+        let error = read_mod_id_from_modinfo(temp_root.to_string_lossy().as_ref()).unwrap_err();
+
+        assert!(error.contains("读取 modinfo 失败"));
+        let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn lang_bridge_po_to_code_requires_output_dir_with_readable_error() {
+        let config = LangWorkflowConfig {
+            lang_dir: String::new(),
+            lang_mode: Some(String::from("cbn")),
+            mod_dir: String::from("E:\\mods\\demo"),
+            language: String::from("zh_CN"),
+            no_str_pl_no_s: false,
+            python_path: None,
+            gettext_path: None,
+        };
+
+        let error = lang_bridge_po_to_code(
+            config,
+            String::from("en"),
+            String::from("zh_CN"),
+            String::new(),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("输出目录不能为空"));
+    }
+
+    #[test]
+    fn save_user_config_reports_readable_json_error() {
+        let error = save_user_config(String::from("{")).unwrap_err();
+
+        assert!(error.contains("用户配置 JSON 无效"));
     }
 }

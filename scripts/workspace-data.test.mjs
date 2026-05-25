@@ -8,7 +8,7 @@ import {
   invertWorkspaceSelection,
   selectAllWorkspaceSegments,
   selectEmptyWorkspaceSegments,
-} from "../tmp_workspace_data/workspace-data.js";
+} from "../app/renderer/workspace-data.js";
 
 test("buildWorkspaceIndexes groups source and context ids", () => {
   const segments = [

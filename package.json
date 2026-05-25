@@ -6,8 +6,10 @@
   "scripts": {
     "build": "tsc && node scripts/copy-renderer.mjs",
     "dev": "tsc -w",
+    "test": "npm run build && node --test scripts/*.test.mjs",
     "tauri:dev": "tauri dev",
-    "tauri:build": "node scripts/prepare-runtime-python.mjs && tauri build"
+    "tauri:build": "node scripts/prepare-runtime-python.mjs && tauri build",
+    "verify": "npm run test && powershell -Command \"Push-Location src-tauri; $env:CARGO_TARGET_DIR='target-test'; cargo test; Pop-Location\""
   },
   "dependencies": {
     "opencc-js": "^1.0.5",
