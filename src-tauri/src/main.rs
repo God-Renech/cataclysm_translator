@@ -385,7 +385,7 @@ fn validate_json_files_for_pot(mod_dir: &str) -> Result<(), String> {
         };
         if let Err(e) = serde_json::from_str::<Value>(&content) {
             errors.push(format!(
-                "{}: JSON 鏃犳晥 (line {}, column {}): {}",
+                "{}: JSON 无效 (line {}, column {}): {}",
                 p.display(),
                 e.line(),
                 e.column(),
@@ -453,22 +453,22 @@ fn extract_from_json(content: &str, file_path: &str, rule: &Rule) -> Result<Vec<
     let include_key_re = rule
         .include_key_regex
         .as_ref()
-        .map(|s| Regex::new(s).map_err(|e| format!("includeKeyRegex 鏃犳晥: {}", e)))
+        .map(|s| Regex::new(s).map_err(|e| format!("includeKeyRegex 无效: {}", e)))
         .transpose()?;
     let exclude_key_re = rule
         .exclude_key_regex
         .as_ref()
-        .map(|s| Regex::new(s).map_err(|e| format!("excludeKeyRegex 鏃犳晥: {}", e)))
+        .map(|s| Regex::new(s).map_err(|e| format!("excludeKeyRegex 无效: {}", e)))
         .transpose()?;
     let include_path_re = rule
         .include_path_regex
         .as_ref()
-        .map(|s| Regex::new(s).map_err(|e| format!("includePathRegex 鏃犳晥: {}", e)))
+        .map(|s| Regex::new(s).map_err(|e| format!("includePathRegex 无效: {}", e)))
         .transpose()?;
     let exclude_path_re = rule
         .exclude_path_regex
         .as_ref()
-        .map(|s| Regex::new(s).map_err(|e| format!("excludePathRegex 鏃犳晥: {}", e)))
+        .map(|s| Regex::new(s).map_err(|e| format!("excludePathRegex 无效: {}", e)))
         .transpose()?;
     let include_keys = rule.include_keys.clone().unwrap_or_default();
     let exclude_keys = rule.exclude_keys.clone().unwrap_or_default();
@@ -3263,5 +3263,24 @@ mod tests {
         let error = save_user_config(String::from("{")).unwrap_err();
 
         assert!(error.contains("用户配置 JSON 无效"));
+    }
+
+    #[test]
+    fn extract_from_json_reports_readable_invalid_regex_error() {
+        let rule = Rule {
+            _format: None,
+            include_keys: None,
+            exclude_keys: None,
+            include_key_regex: Some(String::from("(")),
+            exclude_key_regex: None,
+            include_path_regex: None,
+            exclude_path_regex: None,
+            skip_empty: None,
+            regex: None,
+        };
+
+        let error = extract_from_json("{}", "test.json", &rule).unwrap_err();
+
+        assert!(error.contains("includeKeyRegex 无效"));
     }
 }
