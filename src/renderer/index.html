@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mod Translator</title>
+<script src="./opencc-full.js"></script>
+<script>
+if (typeof OpenCC === 'undefined') {
+  const fallbackScript = document.createElement('script');
+  fallbackScript.src = 'https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js';
+  document.head.appendChild(fallbackScript);
+}
+</script>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f4f7fb;
+  color: #1f2937;
+}
+.app {
+  max-width: 1240px;
+  margin: 18px auto;
+  padding: 0 14px 20px;
+}
+.header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+.lang-switch {
+  width: 220px;
+}
+.mode-switch {
+  width: 220px;
+}
+.hidden {
+  display: none !important;
+}
+.meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #4b5563;
+}
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+.panel {
+  background: #ffffff;
+  border: 1px solid #e5eaf2;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+.panel + .panel { margin-top: 12px; }
+.grid-2,
+.grid-3 {
+  display: grid;
+  gap: 12px;
+}
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #4b5563;
+  font-weight: 600;
+}
+input, select, textarea {
+  width: 100%;
+  border: 1px solid #d7deea;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 13px;
+  background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  outline: none;
+}
+.path-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+.checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.action-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+.preset-actions {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.lang-actions {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+#poEditor {
+  min-height: 260px;
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+button {
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.btn-primary {
+  background: #2563eb;
+  color: #fff;
+}
+.btn-primary:hover { background: #1d4ed8; }
+.btn-neutral {
+  background: #fff;
+  color: #1f2937;
+  border-color: #d1d9e6;
+}
+.btn-neutral:hover { background: #f8fafc; }
+.btn-danger {
+  background: #ef4444;
+  color: #fff;
+}
+.btn-danger:hover { background: #dc2626; }
+.list-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.list {
+  height: 250px;
+  overflow: auto;
+  border: 1px solid #d7deea;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+.entry-row {
+  display: grid;
+  grid-template-columns: 28px minmax(300px, 1fr) minmax(300px, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 6px 4px;
+  height: 156px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+.entry-row textarea {
+  height: 142px;
+  min-height: 142px;
+  resize: none;
+  overflow: auto;
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+.entry-row:hover,
+.entry-row.active {
+  background: #e8f0ff;
+  border-color: #bfdbfe;
+}
+.workspace-toolbar {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.workspace-toolbar .checkbox-row {
+  margin-top: 0;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d1d9e6;
+  border-radius: 8px;
+  padding: 0 8px;
+  min-height: 38px;
+}
+#workspaceSearch {
+  min-height: 38px;
+}
+#workspaceStats {
+  margin-bottom: 6px;
+  color: #475569;
+  font-size: 12px;
+}
+#workspaceList {
+  height: 56vh;
+  min-height: 420px;
+  position: relative;
+  overflow: auto;
+}
+.workspace-virtual-spacer {
+  position: relative;
+  width: 100%;
+}
+.workspace-virtual-content {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+}
+.mod-list {
+  border: 1px solid #d7deea;
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 180px;
+  overflow: auto;
+}
+.mod-list label {
+  display: grid;
+  grid-template-columns: 20px minmax(120px, 1fr) 120px minmax(180px, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 4px 2px;
+  font-size: 13px;
+}
+.mod-list .mod-name,
+.mod-list .mod-id,
+.mod-list .mod-path {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mod-list .mod-id {
+  color: #64748b;
+}
+.mod-list .mod-path {
+  color: #64748b;
+}
+.po-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.po-tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.po-tab {
+  padding: 6px 10px;
+  border: 1px solid #d1d9e6;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+.po-tab.active {
+  background: #e8f0ff;
+  border-color: #7aa2ff;
+}
+.po-tab-close {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  border: 1px solid #d1d9e6;
+  border-radius: 6px;
+  background: #fff;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1;
+}
+.po-tab-close:hover {
+  background: #f1f5f9;
+}
+.mode-guide {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid #d1d9e6;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+}
+#status {
+  height: 200px;
+  background: #0f172a;
+  color: #d1d5db;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+@media (max-width: 1024px) {
+  .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .action-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .preset-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .lang-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workspace-toolbar { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .entry-row { grid-template-columns: 28px 1fr 1fr; }
+}
+@media (max-width: 680px) {
+  .grid-2, .grid-3, .list-grid { grid-template-columns: 1fr; }
+  .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .preset-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lang-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workspace-toolbar { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header-bar">
+    <h2 id="appTitle">CDDA/CBN Mod 翻译工具</h2>
+    <div class="field mode-switch">
+      <label id="labelWorkMode">工作模式</label>
+      <select id="workMode">
+        <option value="mod" data-i18n="workModeMod">MOD 语言工具</option>
+        <option value="keyword" data-i18n="workModeKeyword">关键字提取翻译</option>
+        <option value="po_convert" data-i18n="workModePoConvert">PO 简繁转换</option>
+        <option value="code_bridge" data-i18n="workModeCodeBridge">代码与 Lang 桥接</option>
+      </select>
+    </div>
+    <div class="field lang-switch">
+      <label id="labelUiLanguage">界面语言</label>
+      <select id="uiLang">
+        <option value="zh-CN" data-i18n="uiLangZhCN">简体中文</option>
+        <option value="en" data-i18n="uiLangEn">English</option>
+        <option value="zh-TW" data-i18n="uiLangZhTW">繁體中文</option>
+        <option value="ko" data-i18n="uiLangKo">한국어</option>
+        <option value="ja" data-i18n="uiLangJa">日本語</option>
+        <option value="ru" data-i18n="uiLangRu">Русский</option>
+      </select>
+    </div>
+  </div>
+  <div class="meta-bar">
+    <div class="meta-item"><span data-i18n="labelAuthor">作者</span><span>：</span><span id="metaAuthor"></span></div>
+    <div class="meta-item"><span data-i18n="labelContact">联系方式</span><span>：</span><span id="metaContact"></span></div>
+    <div class="meta-item"><span data-i18n="labelVersion">版本号</span><span>：</span><span id="metaVersion">0.1</span></div>
+  </div>
+
+  <div class="panel" id="generalExtractPanel">
+    <div class="grid-2">
+      <div class="field">
+        <label id="labelImportDir">导入目录</label>
+        <div class="path-row">
+          <input id="importDir" placeholder="选择或输入导入目录" data-i18n-placeholder="phImportDir">
+          <button id="chooseImport" class="btn-neutral" data-i18n="btnChoose">选择</button>
+        </div>
+      </div>
+      <div class="field">
+        <label id="labelExportDir">导出目录</label>
+        <div class="path-row">
+          <input id="exportDir" placeholder="选择或输入导出目录" data-i18n-placeholder="phExportDir">
+          <button id="chooseExport" class="btn-neutral" data-i18n="btnChoose">选择</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label id="labelIncludeKeys">允许键</label>
+        <input id="includeKeys" value="name,description,text,message,snippet,prompt,title,note,effect_str,tooltip,info,sound,line,dialogue,success,failure,true,false">
+      </div>
+      <div class="field">
+        <label id="labelExcludeKeys">排除键</label>
+        <input id="excludeKeys" value="id,type,copy-from,flags,material,category,skill,qualities,obsolete,debug">
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label id="labelRegex">文本正则</label>
+        <input id="regex" placeholder="为空则整段匹配文本文件" data-i18n-placeholder="phRegex">
+      </div>
+      <div class="field">
+        <label id="labelRulePreset">规则预设</label>
+        <select id="rulePreset">
+          <option value="custom" data-i18n="optCustom">自定义</option>
+          <option value="cdda">CDDA</option>
+          <option value="cbn">CBN</option>
+        </select>
+      </div>
+    </div>
+    <div class="preset-actions">
+      <button id="savePresetBtn" class="btn-neutral" data-i18n="btnSavePreset">保存当前预设</button>
+      <button id="importPresetBtn" class="btn-neutral" data-i18n="btnImportPreset">导入预设 JSON</button>
+      <button id="newPresetBtn" class="btn-neutral" data-i18n="btnNewPreset">另存为新预设</button>
+      <button id="deletePresetBtn" class="btn-neutral" data-i18n="btnDeletePreset">删除自定义预设</button>
+      <button id="exportPresetBtn" class="btn-neutral" data-i18n="btnExportPreset">导出当前预设 JSON</button>
+    </div>
+    <input id="importPresetFile" type="file" accept=".json,application/json" style="display:none">
+
+    <div class="grid-2">
+      <div class="field">
+        <label id="labelIncludeKeyRegex">包含键正则</label>
+        <input id="includeKeyRegex" placeholder="例如 ^(name|description|text)$" data-i18n-placeholder="phIncludeKeyRegex">
+      </div>
+      <div class="field">
+        <label id="labelExcludeKeyRegex">排除键正则</label>
+        <input id="excludeKeyRegex" placeholder="例如 ^(id|type)$" data-i18n-placeholder="phExcludeKeyRegex">
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label id="labelIncludePathRegex">包含路径正则</label>
+        <input id="includePathRegex" placeholder="例如 ^items\\.\\d+\\.name" data-i18n-placeholder="phIncludePathRegex">
+      </div>
+      <div class="field">
+        <label id="labelExcludePathRegex">排除路径正则</label>
+        <input id="excludePathRegex" placeholder="例如 .*\\.obsolete\\..*" data-i18n-placeholder="phExcludePathRegex">
+      </div>
+    </div>
+
+    <label class="checkbox-row">
+      <input type="checkbox" id="skipEmpty" checked>
+      <span id="labelSkipEmpty">跳过空白文本</span>
+    </label>
+  </div>
+
+  <div class="panel" id="langToolsPanel">
+    <h3 id="titleLangTools">MOD 语言工具</h3>
+    <div id="modeGuideHint" class="mode-guide"></div>
+    <div class="grid-3">
+      <div class="field">
+        <label id="labelLangDir">外置 lang 目录</label>
+        <div class="path-row">
+          <input id="langDir" placeholder="选择游戏版本对应的 lang 目录" data-i18n-placeholder="phLangDir">
+          <button id="chooseLangDir" class="btn-neutral" data-i18n="btnChoose">选择</button>
+        </div>
+      </div>
+      <div class="field">
+        <label id="labelLangMode">Lang 模式</label>
+        <select id="langMode">
+          <option value="cbn" data-i18n="optLangModeCbn">CBN</option>
+          <option value="cdda" data-i18n="optLangModeCdda">CDDA</option>
+        </select>
+      </div>
+      <div class="field">
+        <label id="labelPoLanguage">PO 语言代码</label>
+        <select id="poLanguage">
+          <option value="en">en</option>
+          <option value="zh_CN">zh_CN</option>
+          <option value="zh_TW">zh_TW</option>
+          <option value="ja">ja</option>
+          <option value="ko">ko</option>
+          <option value="ru">ru</option>
+          <option value="fr">fr</option>
+          <option value="de">de</option>
+          <option value="es">es</option>
+          <option value="it">it</option>
+          <option value="pt_BR">pt_BR</option>
+          <option value="pt_PT">pt_PT</option>
+          <option value="pl">pl</option>
+          <option value="tr">tr</option>
+          <option value="uk">uk</option>
+          <option value="cs">cs</option>
+          <option value="nl">nl</option>
+          <option value="sv">sv</option>
+          <option value="fi">fi</option>
+          <option value="hu">hu</option>
+          <option value="ro">ro</option>
+          <option value="custom" data-i18n="optCustom">自定义</option>
+        </select>
+      </div>
+      <div class="field hidden" id="poLanguageCustomWrap">
+        <label id="labelPoLanguageCustom">自定义语言代码</label>
+        <input id="poLanguageCustom" placeholder="例如 pt_BR">
+      </div>
+      <div class="field">
+        <label id="labelPythonPath">Python 路径（可选）</label>
+        <input id="pythonPath" placeholder="留空则优先用程序目录 runtime/python/python.exe" data-i18n-placeholder="phPythonPath">
+      </div>
+      <div class="field">
+        <label id="labelGettextPath">Gettext 路径（可选）</label>
+        <input id="gettextPath" placeholder="填写 msgfmt/msginit 所在目录" data-i18n-placeholder="phGettextPath">
+      </div>
+      <div class="field">
+        <label>
+          <input type="checkbox" id="noStrPlNoS">
+          <span id="labelNoStrPlNoS">生成 POT 时：名称缺少 str_pl 不自动补 s</span>
+        </label>
+      </div>
+      <div class="field">
+        <label id="labelModRootDir">MOD 所在目录（自动扫描）</label>
+        <div class="path-row">
+          <input id="modRootDir" placeholder="选择后递归扫描子目录 modinfo.json">
+          <button id="chooseModRootDir" class="btn-neutral" data-i18n="btnChoose">选择</button>
+        </div>
+      </div>
+      <div class="field">
+        <label id="labelModList">MOD 清单（可多选）</label>
+        <div class="path-row">
+          <button id="scanModsBtn" class="btn-neutral" data-i18n="btnScanMods">扫描 MOD</button>
+          <button id="selectAllModsBtn" class="btn-neutral" data-i18n="btnSelectAllMods">全选</button>
+          <button id="clearModSelectionBtn" class="btn-neutral" data-i18n="btnClearModSelection">清空选择</button>
+          <button id="useSelectedModBtn" class="btn-neutral" data-i18n="btnUseSelectedMod">使用首个选中 MOD</button>
+        </div>
+        <div id="modList" class="mod-list"></div>
+      </div>
+    </div>
+    <div class="lang-actions" id="langMainActions">
+      <button id="preparePoBtn" class="btn-primary" data-i18n="btnPreparePo">生成 POT + PO</button>
+      <button id="extractPoToWorkspaceBtn" class="btn-primary" data-i18n="btnExtractPoToWorkspace">提取 PO 待翻译文本</button>
+      <button id="applyWorkspaceToPoBtn" class="btn-neutral" data-i18n="btnApplyWorkspaceToPo">应用工作区到 PO</button>
+      <button id="genPotBtn" class="btn-primary" data-i18n="btnGenPot">生成 POT</button>
+      <button id="genPoBtn" class="btn-neutral" data-i18n="btnGenPoAppend">添加新内容到 PO</button>
+      <button id="genPoRewriteBtn" class="btn-neutral" data-i18n="btnGenPoRewrite">重写生成 PO</button>
+      <button id="loadPoBtn" class="btn-neutral" data-i18n="btnLoadPo">加载 PO</button>
+      <button id="savePoBtn" class="btn-neutral" data-i18n="btnSavePo">保存 PO</button>
+      <button id="saveAllPoBtn" class="btn-neutral" data-i18n="btnSaveAllPo">保存全部已修改 PO</button>
+      <button id="compileMoBtn" class="btn-primary" data-i18n="btnCompileMo">导出 MO</button>
+    </div>
+    <div class="field" id="poConvertField">
+      <label id="labelPoConvert">PO 简繁转换（本地）</label>
+      <div class="lang-actions">
+        <select id="convertMode">
+          <option value="s2t">zh_CN -> zh_TW</option>
+          <option value="t2s">zh_TW -> zh_CN</option>
+        </select>
+        <button id="convertPoBtn" class="btn-primary" data-i18n="btnConvertPo">执行转换</button>
+      </div>
+    </div>
+    <div class="field hidden" id="codeBridgeField">
+      <label id="labelCodeBridge">代码与 Lang 桥接</label>
+      <div class="field">
+        <label id="labelBridgeOperationMode" data-i18n="labelBridgeOperationMode">桥接操作</label>
+        <select id="bridgeOperationMode">
+          <option value="inline" data-i18n="optBridgeOperationInline">迁移内嵌译文到 Lang</option>
+          <option value="reverse" data-i18n="optBridgeOperationReverse">PO 反向写回代码</option>
+        </select>
+      </div>
+      <div id="bridgeUsageHintInline" class="mode-guide" data-i18n="bridgeUsageHintInline">迁移模式：选择翻译版 MOD 目录与目标语言代码，冲突策略可选。</div>
+      <div id="bridgeUsageHintReverse" class="mode-guide hidden" data-i18n="bridgeUsageHintReverse">反向模式：填写输出目录与源/目标语言代码，将 PO 写回代码目录副本。</div>
+      <div class="grid-3">
+        <div class="field">
+          <label id="labelBridgeTargetLangCode">目标语言代码标记</label>
+          <input id="bridgeTargetLangCode" list="bridgeLangCodeList" placeholder="例如 zh_TW">
+        </div>
+      </div>
+      <div id="bridgeInlineFields" class="grid-3">
+        <div class="field">
+          <label id="labelBridgeTranslatedModDir">翻译版 MOD 目录</label>
+          <div class="path-row">
+            <input id="bridgeTranslatedModDir" placeholder="用于比对内嵌译文的 MOD 目录">
+            <button id="chooseBridgeTranslatedModDir" class="btn-neutral" data-i18n="btnChoose">选择</button>
+          </div>
+        </div>
+        <div class="field">
+          <label id="labelBridgeConflictStrategy">冲突处理策略</label>
+          <select id="bridgeConflictStrategy">
+            <option value="skip" data-i18n="optBridgeConflictSkip">冲突跳过</option>
+            <option value="frequency" data-i18n="optBridgeConflictFrequency">频次优先</option>
+            <option value="frequency2" data-i18n="optBridgeConflictFrequency2">频次优先2（平票选第一个）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="checkbox-row">
+            <input type="checkbox" id="bridgeArrayMatchById">
+            <span id="labelBridgeArrayMatchById">数组按 id 对齐</span>
+          </label>
+        </div>
+      </div>
+      <div id="bridgeReverseFields" class="grid-3 hidden">
+        <div class="field">
+          <label id="labelBridgeOutputDir">反向转换输出目录</label>
+          <div class="path-row">
+            <input id="bridgeOutputDir" placeholder="PO 反向写回代码后的输出目录">
+            <button id="chooseBridgeOutputDir" class="btn-neutral" data-i18n="btnChoose">选择</button>
+          </div>
+        </div>
+        <div class="field">
+          <label id="labelBridgeSourceLangCode">源语言代码标记</label>
+          <input id="bridgeSourceLangCode" list="bridgeLangCodeList" placeholder="例如 zh_CN">
+        </div>
+      </div>
+      <datalist id="bridgeLangCodeList">
+        <option value="en"></option>
+        <option value="zh_CN"></option>
+        <option value="zh_TW"></option>
+        <option value="ja"></option>
+        <option value="ko"></option>
+        <option value="ru"></option>
+        <option value="fr"></option>
+        <option value="de"></option>
+        <option value="es"></option>
+        <option value="it"></option>
+        <option value="pt_BR"></option>
+        <option value="pt_PT"></option>
+        <option value="pl"></option>
+        <option value="tr"></option>
+        <option value="uk"></option>
+        <option value="cs"></option>
+        <option value="nl"></option>
+        <option value="sv"></option>
+        <option value="fi"></option>
+        <option value="hu"></option>
+        <option value="ro"></option>
+      </datalist>
+      <div class="lang-actions">
+        <button id="bridgeInlineToLangBtn" class="btn-primary" data-i18n="btnBridgeInlineToLang">迁移内嵌译文到 Lang</button>
+        <button id="bridgePoToCodeBtn" class="btn-neutral" data-i18n="btnBridgePoToCode">PO 反向写回代码</button>
+        <button id="bridgeCompileMoBtn" class="btn-primary" data-i18n="btnCompileMo">导出 MO</button>
+      </div>
+    </div>
+    <div class="field">
+      <label id="labelPoEditor">PO 文本编辑</label>
+      <div class="lang-actions">
+        <button id="cleanupPluralBtn" class="btn-neutral" data-i18n="btnCleanupPlural">清理空复数字段</button>
+      </div>
+      <div id="poTabs" class="po-tabs"></div>
+      <textarea id="poEditor"></textarea>
+    </div>
+  </div>
+
+  <div class="panel" id="aiConfigPanel">
+    <h3 id="titleAiConfig">AI 配置</h3>
+    <div class="grid-3">
+      <div class="field">
+        <label id="labelProvider">服务商</label>
+        <select id="provider">
+          <option value="openai_compatible" data-i18n="providerOpenAICompatible">OpenAI 兼容</option>
+          <option value="deepseek" data-i18n="providerDeepSeek">DeepSeek</option>
+          <option value="siliconflow" data-i18n="providerSiliconFlow">硅基流动</option>
+          <option value="mimo" data-i18n="providerMiMo">MiMo</option>
+          <option value="custom" data-i18n="providerCustom">自定义</option>
+          <option value="gemini" data-i18n="providerGemini">Gemini</option>
+        </select>
+      </div>
+      <div class="field">
+        <label id="labelBaseUrl">Base URL</label>
+        <input id="baseUrl" value="https://api.openai.com">
+      </div>
+      <div class="field">
+        <label id="labelModel">模型</label>
+        <input id="model" value="gpt-4o-mini">
+      </div>
+      <div class="field">
+        <label id="labelApiKey">API Key</label>
+        <input id="apiKey" type="password">
+        <label class="checkbox-row">
+          <input type="checkbox" id="rememberKey">
+          <span id="labelRememberKey">记住 API Key</span>
+        </label>
+      </div>
+      <div class="field">
+        <label id="labelTargetLang">目标语言</label>
+        <select id="targetLang">
+          <option value="中文">中文</option>
+          <option value="中文（繁体）">中文（繁体）</option>
+          <option value="English">English</option>
+          <option value="日本語">日本語</option>
+          <option value="한국어">한국어</option>
+          <option value="Русский">Русский</option>
+          <option value="Français">Français</option>
+          <option value="Deutsch">Deutsch</option>
+          <option value="Español">Español</option>
+          <option value="Português">Português</option>
+          <option value="Italiano">Italiano</option>
+        </select>
+      </div>
+      <div class="field">
+        <label id="labelTimeoutSec">API 超时（秒）</label>
+        <input id="timeoutSec" type="number" value="120" min="10">
+      </div>
+      <div class="field">
+        <label id="labelBatchSize">批次条数</label>
+        <input id="batchSize" type="number" value="20" min="1">
+      </div>
+      <div class="field">
+        <label id="labelBatchTokenLimit">批次 Token 上限</label>
+        <input id="batchTokenLimit" type="number" value="8000" min="1000">
+      </div>
+      <div class="field">
+        <label id="labelConcurrency">并发批次数</label>
+        <input id="concurrency" type="number" value="2" min="1" max="10">
+      </div>
+      <div class="field">
+        <label id="labelRpmLimit">RPM 上限（每分钟请求）</label>
+        <input id="rpmLimit" type="number" value="0" min="0">
+      </div>
+      <div class="field">
+        <label id="labelTpmLimit">TPM 上限（每分钟 Token）</label>
+        <input id="tpmLimit" type="number" value="0" min="0">
+      </div>
+      <div class="field">
+        <label id="labelMaxRetries">失败重试次数</label>
+        <input id="maxRetries" type="number" value="2" min="0" max="10">
+      </div>
+    </div>
+    <div class="field">
+      <label id="labelSystemPrompt">系统提示词</label>
+      <textarea id="systemPrompt" rows="3">你是游戏 mod 文本翻译助手。保持占位符、标签与格式不变，不翻译标识符与 ID，输出 JSON 数组 [{id,target}]，target 为译文。</textarea>
+    </div>
+    <div class="field">
+      <label id="labelUserPrefix">用户提示前缀</label>
+      <textarea id="userPrefix" rows="2">将以下英文文本翻译为中文，保持占位符与符号不变，不添加解释或额外文本。</textarea>
+    </div>
+    <div class="action-grid">
+      <button id="scanBtn" class="btn-primary" data-i18n="btnScan">扫描</button>
+      <button id="testApiBtn" class="btn-neutral" data-i18n="btnTestApi">测试 API</button>
+      <button id="translateBtn" class="btn-primary" data-i18n="btnTranslate">翻译选中</button>
+      <button id="stopBtn" class="btn-danger" data-i18n="btnStop">中止</button>
+      <button id="resumeBtn" class="btn-neutral" data-i18n="btnResume">继续翻译</button>
+      <button id="exportBtn" class="btn-primary" data-i18n="btnExport">导出</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 id="titleStatus">状态</h3>
+    <div id="status" class="list"></div>
+  </div>
+
+  <div class="panel">
+    <h3 id="titleWorkspace">翻译工作区</h3>
+    <div class="workspace-toolbar">
+      <button id="workspaceSelectAllBtn" class="btn-neutral" data-i18n="btnWorkspaceSelectAll">全部勾选</button>
+      <button id="workspaceInvertBtn" class="btn-neutral" data-i18n="btnWorkspaceInvert">反向勾选</button>
+      <button id="workspaceSelectEmptyBtn" class="btn-neutral" data-i18n="btnWorkspaceSelectEmpty">勾选空译文</button>
+      <label class="checkbox-row">
+        <input type="checkbox" id="workspaceShowSelectedOnly">
+        <span id="labelWorkspaceShowSelectedOnly">仅显示已勾选</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="workspaceShowEmptyOnly">
+        <span id="labelWorkspaceShowEmptyOnly">仅显示空译文</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="workspaceSyncSameSource">
+        <span id="labelWorkspaceSyncSameSource">同源文本联动</span>
+      </label>
+      <select id="workspaceSyncScope">
+        <option value="visible" data-i18n="optWorkspaceSyncVisible">联动当前可见</option>
+        <option value="context" data-i18n="optWorkspaceSyncContext">联动当前上下文</option>
+        <option value="all" data-i18n="optWorkspaceSyncAll">联动全部条目</option>
+      </select>
+      <input id="workspaceSearch" placeholder="搜索源文或译文" data-i18n-placeholder="phWorkspaceSearch">
+    </div>
+    <div id="workspaceStats"></div>
+    <div id="workspaceList" class="list"></div>
+  </div>
+</div>
+<script src="./tauri-bridge.js"></script>
+<script type="module" src="./renderer.js"></script>
+</body>
+</html>

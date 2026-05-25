@@ -1,0 +1,23 @@
+{
+  "name": "cataclysm-translator",
+  "version": "0.1.0",
+  "private": true,
+  "main": "app/main.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && node scripts/copy-renderer.mjs",
+    "dev": "tsc -w",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "node scripts/prepare-runtime-python.mjs && tauri build"
+  },
+  "dependencies": {
+    "opencc-js": "^1.0.5",
+    "undici": "^6.18.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
+    "electron": "^29.1.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.5.4"
+  }
+}
