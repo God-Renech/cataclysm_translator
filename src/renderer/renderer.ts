@@ -37,6 +37,11 @@ import {
   resolveCfgForMod,
 } from "./lang-workflow.js";
 import {
+  runBridgeInlineAction,
+  runExtractPoToWorkspaceAction,
+  runPreparePoAction,
+} from "./lang-actions.js";
+import {
   closePoTabState,
   makeContextKey,
   persistActivePoTabContent,
@@ -3348,51 +3353,20 @@ bridgeInlineToLangBtn.addEventListener('click', async () => {
     conflictStrategy: strategyValue === 'frequency' || strategyValue === 'frequency2' ? strategyValue : 'skip',
     arrayMatchById: bridgeArrayMatchByIdInput.checked
   };
-  try {
-    setBusy(true);
-    setStatus(rt('bridgeStartInline'));
-    const runMods = getRunMods(baseCfg.modDir);
-    let successCount = 0;
-    let failedCount = 0;
-    for (const mod of runMods) {
-      setStatus(rt('usingModRun', { name: mod.name }));
-      try {
-        const cfg = await resolveCfgForMod(baseCfg, mod.path);
-        const translatedModDir = runMods.length > 1 ? `${translatedRoot}\\${pathBaseName(mod.path)}` : translatedRoot;
-        const report = await translator.langBridgeInlineToLang(cfg, translatedModDir, bridgeOptions);
-        const content = await translator.langReadPo(cfg);
-        upsertPoTab(mod.path, cfg.language, mod.name, content, false);
-        const filledCount = Number.isFinite(Number(report.filledCount))
-          ? Number(report.filledCount)
-          : Number(report.filledMsgstrCount || 0) + Number(report.filledPluralCount || 0);
-        setStatus(rt('bridgeInlineDone', {
-          poPath: report.poPath,
-          moPath: report.moPath,
-          strategy: report.conflictStrategy || bridgeOptions.conflictStrategy,
-          filled: filledCount,
-          conflicts: report.conflictCount,
-          conflictsResolved: Number(report.conflictResolvedCount || 0),
-          conflictsSkipped: Number(report.conflictSkippedCount || 0),
-          logPath: report.logPath || '-'
-        }));
-        successCount += 1;
-      } catch (e: any) {
-        failedCount += 1;
-        setStatus(rt('bridgeInlineModFailed', { name: mod.name, error: e?.message || e }));
-      }
-    }
-    renderPoTabs();
-    setStatus(rt('bridgeInlineBatchSummary', {
-      total: runMods.length,
-      success: successCount,
-      failed: failedCount
-    }));
-    setStatus(rt('nextStepAfterSavePo'));
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  } finally {
-    setBusy(false);
-  }
+  await runBridgeInlineAction({
+    baseCfg,
+    translatedRoot,
+    bridgeOptions,
+    runMods: getRunMods(baseCfg.modDir),
+    translator,
+    resolveCfgForMod,
+    pathBaseName,
+    upsertPoTab,
+    renderPoTabs,
+    setBusy,
+    setStatus,
+    rt,
+  });
 });
 
 bridgePoToCodeBtn.addEventListener('click', async () => {
@@ -3486,21 +3460,16 @@ document.getElementById('preparePoBtn')!.addEventListener('click', async () => {
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    const runMods = getRunMods(baseCfg.modDir);
-    for (const mod of runMods) {
-      setStatus(rt('usingModRun', { name: mod.name }));
-      const cfg = await resolveCfgForMod(baseCfg, mod.path);
-      await translator.langGeneratePot(cfg);
-      await translator.langGeneratePo(cfg);
-      const content = await translator.langReadPo(cfg);
-      upsertPoTab(mod.path, cfg.language, mod.name, content, false);
-    }
-    renderPoTabs();
-    setStatus(rt('langReadyDone'));
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  }
+  await runPreparePoAction({
+    baseCfg,
+    runMods: getRunMods(baseCfg.modDir),
+    translator,
+    resolveCfgForMod,
+    upsertPoTab,
+    renderPoTabs,
+    setStatus,
+    rt,
+  });
 });
 
 document.getElementById('extractPoToWorkspaceBtn')!.addEventListener('click', async () => {
@@ -3513,37 +3482,33 @@ document.getElementById('extractPoToWorkspaceBtn')!.addEventListener('click', as
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    const runMods = getRunMods(baseCfg.modDir);
-    segments = [];
-    clearTranslations();
-    selectedIds = new Set();
-    workspaceContextMap.clear();
-    workspaceContextInfo.clear();
-    for (const mod of runMods) {
-      setStatus(rt('usingModRun', { name: mod.name }));
-      const cfg = await resolveCfgForMod(baseCfg, mod.path);
-      const poSegments: Segment[] = await translator.langExtractPoSegments(cfg);
-      const contextKey = makeContextKey(mod.path, cfg.language);
-      workspaceContextInfo.set(contextKey, { modPath: mod.path, language: cfg.language, name: mod.name });
-      poSegments.forEach((s, idx) => {
-        const workspaceId = `${contextKey}::${s.id}::${idx}`;
-        segments.push({ ...s, id: workspaceId });
-        selectedIds.add(workspaceId);
-        getOrCreateTranslation(workspaceId);
-        workspaceContextMap.set(workspaceId, contextKey);
-      });
-    }
-    rebuildWorkspaceIndexes();
-    renderSegments(true);
-    if (!segments.length) {
-      setStatus(rt('poAiNoItems'));
-    } else {
-      setStatus(rt('poAiStart', { count: segments.length }));
-    }
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  }
+  await runExtractPoToWorkspaceAction({
+    baseCfg,
+    runMods: getRunMods(baseCfg.modDir),
+    translator,
+    resolveCfgForMod,
+    makeContextKey,
+    clearWorkspace: () => {
+      segments = [];
+      clearTranslations();
+      selectedIds = new Set();
+      workspaceContextMap.clear();
+      workspaceContextInfo.clear();
+    },
+    onSegment: (segment, contextKey, mod, language, index) => {
+      workspaceContextInfo.set(contextKey, { modPath: mod.path, language, name: mod.name });
+      const workspaceId = `${contextKey}::${segment.id}::${index}`;
+      segments.push({ ...segment, id: workspaceId });
+      selectedIds.add(workspaceId);
+      getOrCreateTranslation(workspaceId);
+      workspaceContextMap.set(workspaceId, contextKey);
+    },
+    rebuildWorkspaceIndexes,
+    renderSegments,
+    setStatus,
+    rt,
+    getSegmentCount: () => segments.length,
+  });
 });
 
 document.getElementById('applyWorkspaceToPoBtn')!.addEventListener('click', async () => {
