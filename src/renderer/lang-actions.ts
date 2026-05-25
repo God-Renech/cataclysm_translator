@@ -245,3 +245,68 @@ export async function runLoadPoAction(options: {
     options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
   }
 }
+
+export async function runSavePoAction(options: {
+  baseCfg: LangWorkflowConfig;
+  activePoTabKey: string;
+  poTabs: ActionPoTab[];
+  editorContent: string;
+  persistActivePoTabContent: () => void;
+  translator: any;
+  renderPoTabs: () => void;
+  setStatus: (message: string, append?: boolean) => void;
+  rt: (key: any, vars?: Record<string, string | number>) => string;
+}) {
+  try {
+    if (options.activePoTabKey) {
+      options.persistActivePoTabContent();
+      const tab = options.poTabs.find((item) => item.key === options.activePoTabKey);
+      const cfg = tab
+        ? { ...options.baseCfg, modDir: tab.modPath, language: tab.language }
+        : options.baseCfg;
+      const path = await options.translator.langWritePo(cfg, tab?.content || options.editorContent);
+      if (tab) tab.dirty = false;
+      options.renderPoTabs();
+      options.setStatus(options.rt("langPoSaved", { path }));
+      options.setStatus(options.rt("nextStepAfterSavePo"));
+      return;
+    }
+
+    const path = await options.translator.langWritePo(options.baseCfg, options.editorContent);
+    options.setStatus(options.rt("langPoSaved", { path }));
+    options.setStatus(options.rt("nextStepAfterSavePo"));
+  } catch (error: any) {
+    options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
+  }
+}
+
+export async function runSaveAllPoAction(options: {
+  baseCfg: LangWorkflowConfig;
+  poTabs: ActionPoTab[];
+  persistActivePoTabContent: () => void;
+  translator: any;
+  renderPoTabs: () => void;
+  setStatus: (message: string, append?: boolean) => void;
+  rt: (key: any, vars?: Record<string, string | number>) => string;
+}) {
+  try {
+    options.persistActivePoTabContent();
+    const dirtyTabs = options.poTabs.filter((tab) => tab.dirty);
+    if (!dirtyTabs.length) {
+      options.setStatus(options.rt("saveAllPoNone"));
+      return;
+    }
+
+    for (const tab of dirtyTabs) {
+      const cfg = { ...options.baseCfg, modDir: tab.modPath, language: tab.language };
+      await options.translator.langWritePo(cfg, tab.content);
+      tab.dirty = false;
+    }
+
+    options.renderPoTabs();
+    options.setStatus(options.rt("saveAllPoDone", { count: dirtyTabs.length }));
+    options.setStatus(options.rt("nextStepAfterSavePo"));
+  } catch (error: any) {
+    options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
+  }
+}

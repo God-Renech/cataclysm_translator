@@ -6,6 +6,8 @@ import {
   runGeneratePotAction,
   runLoadPoAction,
   runRegeneratePoAction,
+  runSaveAllPoAction,
+  runSavePoAction,
   runBridgeInlineAction,
   runExtractPoToWorkspaceAction,
   runPreparePoAction,
@@ -213,4 +215,148 @@ test("runLoadPoAction loads po content for each mod and reports follow-up steps"
   assert.deepEqual(tabs, [["mod-a", "zh_CN", "A", "content:mod-a", false]]);
   assert.deepEqual(events, ["render"]);
   assert.deepEqual(statuses, ["langPoLoaded", "nextStepAfterLoadPo"]);
+});
+
+test("runSavePoAction persists the active tab content and clears its dirty flag", async () => {
+  const statuses = [];
+  const tabs = [{
+    key: "mod-a@@zh_CN",
+    modPath: "mod-a",
+    language: "zh_CN",
+    name: "A",
+    content: "updated-content",
+    dirty: true,
+  }];
+
+  await runSavePoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    activePoTabKey: "mod-a@@zh_CN",
+    poTabs: tabs,
+    editorContent: "editor-value",
+    persistActivePoTabContent: () => {
+      tabs[0].content = "updated-content";
+    },
+    translator: {
+      langWritePo: async (cfg, content) => `${cfg.modDir}:${cfg.language}:${content}`,
+    },
+    renderPoTabs: () => statuses.push("render"),
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.path ?? ""}`,
+  });
+
+  assert.equal(tabs[0].dirty, false);
+  assert.deepEqual(statuses, [
+    "render",
+    "langPoSaved:mod-a:zh_CN:updated-content",
+    "nextStepAfterSavePo:",
+  ]);
+});
+
+test("runSavePoAction falls back to base config when no tab is active", async () => {
+  const statuses = [];
+
+  await runSavePoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    activePoTabKey: "",
+    poTabs: [],
+    editorContent: "editor-value",
+    persistActivePoTabContent: () => {
+      throw new Error("should not persist");
+    },
+    translator: {
+      langWritePo: async (cfg, content) => `${cfg.modDir}:${cfg.language}:${content}`,
+    },
+    renderPoTabs: () => statuses.push("render"),
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.path ?? ""}`,
+  });
+
+  assert.deepEqual(statuses, [
+    "langPoSaved:base:zh_CN:editor-value",
+    "nextStepAfterSavePo:",
+  ]);
+});
+
+test("runSaveAllPoAction writes every dirty tab and reports the saved count", async () => {
+  const statuses = [];
+  const writes = [];
+  const tabs = [
+    {
+      key: "mod-a@@zh_CN",
+      modPath: "mod-a",
+      language: "zh_CN",
+      name: "A",
+      content: "a-content",
+      dirty: true,
+    },
+    {
+      key: "mod-b@@zh_TW",
+      modPath: "mod-b",
+      language: "zh_TW",
+      name: "B",
+      content: "b-content",
+      dirty: false,
+    },
+    {
+      key: "mod-c@@ja",
+      modPath: "mod-c",
+      language: "ja",
+      name: "C",
+      content: "c-content",
+      dirty: true,
+    },
+  ];
+
+  await runSaveAllPoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    poTabs: tabs,
+    persistActivePoTabContent: () => {},
+    translator: {
+      langWritePo: async (cfg, content) => {
+        writes.push([cfg.modDir, cfg.language, content]);
+      },
+    },
+    renderPoTabs: () => statuses.push("render"),
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.count ?? ""}`,
+  });
+
+  assert.deepEqual(writes, [
+    ["mod-a", "zh_CN", "a-content"],
+    ["mod-c", "ja", "c-content"],
+  ]);
+  assert.equal(tabs[0].dirty, false);
+  assert.equal(tabs[2].dirty, false);
+  assert.deepEqual(statuses, [
+    "render",
+    "saveAllPoDone:2",
+    "nextStepAfterSavePo:",
+  ]);
+});
+
+test("runSaveAllPoAction reports when there is nothing to save", async () => {
+  const statuses = [];
+
+  await runSaveAllPoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    poTabs: [{
+      key: "mod-a@@zh_CN",
+      modPath: "mod-a",
+      language: "zh_CN",
+      name: "A",
+      content: "a-content",
+      dirty: false,
+    }],
+    persistActivePoTabContent: () => {},
+    translator: {
+      langWritePo: async () => {
+        throw new Error("should not write");
+      },
+    },
+    renderPoTabs: () => statuses.push("render"),
+    setStatus: (message) => statuses.push(message),
+    rt: (key) => key,
+  });
+
+  assert.deepEqual(statuses, ["saveAllPoNone"]);
 });

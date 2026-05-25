@@ -44,6 +44,8 @@ import {
   runLoadPoAction,
   runPreparePoAction,
   runRegeneratePoAction,
+  runSaveAllPoAction,
+  runSavePoAction,
 } from "./lang-actions.js";
 import {
   closePoTabState,
@@ -3658,26 +3660,17 @@ document.getElementById('savePoBtn')!.addEventListener('click', async () => {
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    persistActivePoTabContentFromEditor();
-    if (activePoTabKey) {
-      const tab = poTabs.find((x) => x.key === activePoTabKey);
-      const cfg = tab
-        ? { ...baseCfg, modDir: tab.modPath, language: tab.language }
-        : baseCfg;
-      const path = await translator.langWritePo(cfg, tab?.content || poEditorInput.value);
-      if (tab) tab.dirty = false;
-      renderPoTabs();
-      setStatus(rt('langPoSaved', { path }));
-      setStatus(rt('nextStepAfterSavePo'));
-      return;
-    }
-    const path = await translator.langWritePo(baseCfg, poEditorInput.value);
-    setStatus(rt('langPoSaved', { path }));
-    setStatus(rt('nextStepAfterSavePo'));
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  }
+  await runSavePoAction({
+    baseCfg,
+    activePoTabKey,
+    poTabs,
+    editorContent: poEditorInput.value,
+    persistActivePoTabContent: persistActivePoTabContentFromEditor,
+    translator,
+    renderPoTabs,
+    setStatus,
+    rt,
+  });
 });
 
 saveAllPoBtn.addEventListener('click', async () => {
@@ -3690,24 +3683,15 @@ saveAllPoBtn.addEventListener('click', async () => {
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    persistActivePoTabContentFromEditor();
-    const dirtyTabs = poTabs.filter((x) => x.dirty);
-    if (!dirtyTabs.length) {
-      setStatus(rt('saveAllPoNone'));
-      return;
-    }
-    for (const tab of dirtyTabs) {
-      const cfg = { ...baseCfg, modDir: tab.modPath, language: tab.language };
-      await translator.langWritePo(cfg, tab.content);
-      tab.dirty = false;
-    }
-    renderPoTabs();
-    setStatus(rt('saveAllPoDone', { count: dirtyTabs.length }));
-    setStatus(rt('nextStepAfterSavePo'));
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  }
+  await runSaveAllPoAction({
+    baseCfg,
+    poTabs,
+    persistActivePoTabContent: persistActivePoTabContentFromEditor,
+    translator,
+    renderPoTabs,
+    setStatus,
+    rt,
+  });
 });
 
 cleanupPluralBtn.addEventListener('click', async () => {
