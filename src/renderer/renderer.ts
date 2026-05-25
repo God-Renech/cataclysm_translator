@@ -42,6 +42,7 @@ import {
   runBridgeInlineAction,
   runBridgePoToCodeAction,
   runCleanupPluralAction,
+  runConvertPoAction,
   runExtractPoToWorkspaceAction,
   runGeneratePoAction,
   runGeneratePotAction,
@@ -3720,45 +3721,32 @@ convertPoBtn.addEventListener('click', async () => {
   const targetLangCode = getTargetPoLanguageCode(mode);
   
   try {
-    setBusy(true);
     setStatus('Initializing OpenCC...');
     const converter = OpenCC.Converter(ccCfg);
     const hasChinese = (text: string) => /[\u4e00-\u9fa5]/.test(text);
-    let lastContextKey = '';
-    
-    const runMods = getRunMods(baseCfg.modDir);
-    for (const mod of runMods) {
-      setStatus(rt('usingModRun', { name: mod.name }));
-      const sourceCfg = await resolveCfgForMod(baseCfg, mod.path);
-      const content = await translator.langReadPo(sourceCfg);
-      if (!content) continue;
-
-      const newContent = convertPoContent(content, targetLangCode, (text) => {
+    await runConvertPoAction({
+      baseCfg,
+      targetLangCode,
+      runMods: getRunMods(baseCfg.modDir),
+      translator,
+      resolveCfgForMod,
+      convertContent: (content, language) => convertPoContent(content, language, (text) => {
         if (!hasChinese(text)) return text;
         return converter(text) as string;
-      });
-      const targetCfg = { ...sourceCfg, language: targetLangCode };
-      const path = await translator.langWritePo(targetCfg, newContent);
-      upsertPoTab(mod.path, targetLangCode, mod.name, newContent, false);
-      lastContextKey = makeContextKey(mod.path, targetLangCode);
-      setStatus(rt('langPoSaved', { path }));
-    }
-    if (lastContextKey) {
-      setPoLanguageSelection(targetLangCode);
-      const targetTab = poTabs.find((x) => x.key === lastContextKey);
-      if (targetTab) {
-        switchPoTab(targetTab.key);
-      } else {
-        switchToPoLanguageContext();
-      }
-    } else {
-      renderPoTabs();
-    }
-    setStatus(rt('nextStepAfterConvertPo'));
+      }),
+      upsertPoTab,
+      makeContextKey,
+      setPoLanguageSelection,
+      findPoTabByKey: (key) => poTabs.find((x) => x.key === key),
+      switchPoTab,
+      switchToPoLanguageContext,
+      renderPoTabs,
+      setBusy,
+      setStatus,
+      rt,
+    });
   } catch (e: any) {
     setStatus(rt('langActionFailed', { error: e?.message || e }));
-  } finally {
-    setBusy(false);
   }
 });
 

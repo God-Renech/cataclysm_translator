@@ -5,6 +5,7 @@ import {
   runApplyWorkspaceToPoAction,
   runBridgePoToCodeAction,
   runCompileMoAction,
+  runConvertPoAction,
   runCleanupPluralAction,
   runGeneratePoAction,
   runGeneratePotAction,
@@ -560,4 +561,89 @@ test("runApplyWorkspaceToPoAction reports no-applied when a context has no valid
   });
 
   assert.deepEqual(statuses, ["poApplyStats:A", "poAiNoApplied:"]);
+});
+
+test("runConvertPoAction converts po files, writes target language tabs, and switches to the last context", async () => {
+  const statuses = [];
+  const writes = [];
+  const tabs = [];
+  const events = [];
+  let busy = false;
+
+  await runConvertPoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    targetLangCode: "zh_TW",
+    runMods: [{ path: "mod-a", name: "A" }, { path: "mod-b", name: "B" }],
+    translator: {
+      langReadPo: async (cfg) => cfg.modDir === "mod-a" ? "po-a" : "po-b",
+      langWritePo: async (cfg, content) => {
+        writes.push([cfg.modDir, cfg.language, content]);
+        return `${cfg.modDir}:${cfg.language}`;
+      },
+    },
+    resolveCfgForMod: (cfg, modPath) => ({ ...cfg, modDir: modPath }),
+    convertContent: (content, language) => `converted:${language}:${content}`,
+    upsertPoTab: (...args) => tabs.push(args),
+    makeContextKey: (modPath, language) => `${modPath}@@${language}`,
+    setPoLanguageSelection: (language) => events.push(`select:${language}`),
+    findPoTabByKey: (key) => key === "mod-b@@zh_TW" ? { key } : null,
+    switchPoTab: (key) => events.push(`switch:${key}`),
+    switchToPoLanguageContext: () => events.push("fallback-switch"),
+    renderPoTabs: () => events.push("render"),
+    setBusy: (value) => { busy = value; },
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.name ?? vars?.path ?? ""}`,
+  });
+
+  assert.equal(busy, false);
+  assert.deepEqual(writes, [
+    ["mod-a", "zh_TW", "converted:zh_TW:po-a"],
+    ["mod-b", "zh_TW", "converted:zh_TW:po-b"],
+  ]);
+  assert.deepEqual(tabs, [
+    ["mod-a", "zh_TW", "A", "converted:zh_TW:po-a", false],
+    ["mod-b", "zh_TW", "B", "converted:zh_TW:po-b", false],
+  ]);
+  assert.deepEqual(events, ["select:zh_TW", "switch:mod-b@@zh_TW"]);
+  assert.ok(statuses.includes("usingModRun:A"));
+  assert.ok(statuses.includes("usingModRun:B"));
+  assert.ok(statuses.includes("langPoSaved:mod-a:zh_TW"));
+  assert.ok(statuses.includes("langPoSaved:mod-b:zh_TW"));
+  assert.equal(statuses.at(-1), "nextStepAfterConvertPo:");
+});
+
+test("runConvertPoAction falls back to render when no po content is converted", async () => {
+  const statuses = [];
+  const events = [];
+  let busy = false;
+
+  await runConvertPoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    targetLangCode: "zh_TW",
+    runMods: [{ path: "mod-a", name: "A" }],
+    translator: {
+      langReadPo: async () => "",
+      langWritePo: async () => {
+        throw new Error("should not write");
+      },
+    },
+    resolveCfgForMod: (cfg, modPath) => ({ ...cfg, modDir: modPath }),
+    convertContent: (content) => content,
+    upsertPoTab: () => {
+      throw new Error("should not upsert");
+    },
+    makeContextKey: (modPath, language) => `${modPath}@@${language}`,
+    setPoLanguageSelection: () => events.push("select"),
+    findPoTabByKey: () => null,
+    switchPoTab: () => events.push("switch"),
+    switchToPoLanguageContext: () => events.push("fallback-switch"),
+    renderPoTabs: () => events.push("render"),
+    setBusy: (value) => { busy = value; },
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.name ?? vars?.path ?? ""}`,
+  });
+
+  assert.equal(busy, false);
+  assert.deepEqual(events, ["render"]);
+  assert.equal(statuses.at(-1), "nextStepAfterConvertPo:");
 });

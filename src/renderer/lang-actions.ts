@@ -487,3 +487,59 @@ export async function runCompileMoAction(options: {
     options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
   }
 }
+
+export async function runConvertPoAction(options: {
+  baseCfg: LangWorkflowConfig;
+  targetLangCode: string;
+  runMods: ActionMod[];
+  translator: any;
+  resolveCfgForMod: (baseCfg: LangWorkflowConfig, modPath: string) => Promise<LangWorkflowConfig> | LangWorkflowConfig;
+  convertContent: (content: string, targetLangCode: string) => string;
+  upsertPoTab: (modPath: string, language: string, name: string, content: string, dirty?: boolean) => void;
+  makeContextKey: (modPath: string, language: string) => string;
+  setPoLanguageSelection: (language: string) => void;
+  findPoTabByKey: (key: string) => { key: string } | null | undefined;
+  switchPoTab: (key: string) => void;
+  switchToPoLanguageContext: () => void;
+  renderPoTabs: () => void;
+  setBusy: (busy: boolean) => void;
+  setStatus: (message: string, append?: boolean) => void;
+  rt: (key: any, vars?: Record<string, string | number>) => string;
+}) {
+  try {
+    options.setBusy(true);
+    let lastContextKey = "";
+
+    for (const mod of options.runMods) {
+      options.setStatus(options.rt("usingModRun", { name: mod.name }));
+      const sourceCfg = await options.resolveCfgForMod(options.baseCfg, mod.path);
+      const content = await options.translator.langReadPo(sourceCfg);
+      if (!content) continue;
+
+      const newContent = options.convertContent(content, options.targetLangCode);
+      const targetCfg = { ...sourceCfg, language: options.targetLangCode };
+      const path = await options.translator.langWritePo(targetCfg, newContent);
+      options.upsertPoTab(mod.path, options.targetLangCode, mod.name, newContent, false);
+      lastContextKey = options.makeContextKey(mod.path, options.targetLangCode);
+      options.setStatus(options.rt("langPoSaved", { path }));
+    }
+
+    if (lastContextKey) {
+      options.setPoLanguageSelection(options.targetLangCode);
+      const targetTab = options.findPoTabByKey(lastContextKey);
+      if (targetTab) {
+        options.switchPoTab(targetTab.key);
+      } else {
+        options.switchToPoLanguageContext();
+      }
+    } else {
+      options.renderPoTabs();
+    }
+
+    options.setStatus(options.rt("nextStepAfterConvertPo"));
+  } catch (error: any) {
+    options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
+  } finally {
+    options.setBusy(false);
+  }
+}
