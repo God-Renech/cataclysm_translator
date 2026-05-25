@@ -20,6 +20,11 @@ import {
   selectEmptyWorkspaceSegments,
 } from "./workspace-data.js";
 import {
+  buildWorkspaceStats,
+  createWorkspaceControllerState,
+  planSyncedSourceUpdates,
+} from "./workspace-controller.js";
+import {
   applyCheckedStateToCheckboxes,
   clearModPathSelection,
   selectAllModPaths,
@@ -272,21 +277,12 @@ let workspaceSearchTimer: number | null = null;
 let lastWorkModeValue = workModeSelect.value || 'mod';
 let lastPoLanguageSelectValue = poLanguageInput.value;
 let lastPoLanguageCustomValue = poLanguageCustomInput.value;
-const visibleTargetTextareaMap = new Map<string, HTMLTextAreaElement>();
-const segmentById = new Map<string, Segment>();
-const sourceToSegmentIds = new Map<string, string[]>();
-const contextToSegmentIds = new Map<string, string[]>();
 let dedupMemberIdsByRepresentativeId = new Map<string, string[]>();
 let selectedSegmentTotalForProgress = 0;
 let uniqueSegmentTotalForProgress = 0;
 const WORKSPACE_ROW_HEIGHT = 156;
 const WORKSPACE_OVERSCAN = 4;
-let workspaceRowsCache: Segment[] = [];
-let workspaceVirtualSpacer: HTMLDivElement | null = null;
-let workspaceVirtualContent: HTMLDivElement | null = null;
-let workspaceVirtualRenderFrame: number | null = null;
-let workspaceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-let workspacePendingResetScroll = false;
+const workspaceControllerState = createWorkspaceControllerState();
 
 const translator = window.translator ?? null;
 
@@ -2359,9 +2355,13 @@ function formatWorkspaceStatsView(total: number, visible: number, selectedVisibl
 
 function updateWorkspaceStats(visibleRows?: Segment[]) {
   const visible = visibleRows || getFilteredSegments();
-  const selectedVisible = visible.filter((s) => selectedIds.has(s.id)).length;
-  const emptyVisible = visible.filter((s) => !(translationMap.get(s.id)?.target || '').trim()).length;
-  workspaceStatsDiv.textContent = formatWorkspaceStatsView(segments.length, visible.length, selectedVisible, emptyVisible);
+  const stats = buildWorkspaceStats(visible, segments.length, selectedIds, translationMap);
+  workspaceStatsDiv.textContent = formatWorkspaceStatsView(
+    stats.total,
+    stats.visible,
+    stats.selectedVisible,
+    stats.emptyVisible
+  );
 }
 
 function resolveContextKey(segment: Segment) {
@@ -2370,38 +2370,35 @@ function resolveContextKey(segment: Segment) {
 
 function rebuildWorkspaceIndexes() {
   const indexes = buildWorkspaceIndexes(segments, resolveContextKey);
-  segmentById.clear();
-  sourceToSegmentIds.clear();
-  contextToSegmentIds.clear();
-  indexes.segmentById.forEach((value, key) => segmentById.set(key, value));
-  indexes.sourceToSegmentIds.forEach((value, key) => sourceToSegmentIds.set(key, value));
-  indexes.contextToSegmentIds.forEach((value, key) => contextToSegmentIds.set(key, value));
+  workspaceControllerState.segmentById.clear();
+  workspaceControllerState.sourceToSegmentIds.clear();
+  workspaceControllerState.contextToSegmentIds.clear();
+  indexes.segmentById.forEach((value, key) => workspaceControllerState.segmentById.set(key, value));
+  indexes.sourceToSegmentIds.forEach((value, key) => workspaceControllerState.sourceToSegmentIds.set(key, value));
+  indexes.contextToSegmentIds.forEach((value, key) => workspaceControllerState.contextToSegmentIds.set(key, value));
 }
 
 function syncSameSourceTargets(baseId: string, sourceText: string, value: string, visibleRows: Segment[]) {
-  const normalized = normalizeSourceKey(sourceText);
-  if (!normalized) return [];
-  const scope = workspaceSyncScopeSelect.value;
-  const visibleIdSet = new Set(visibleRows.map((x) => x.id));
-  const baseSegment = segmentById.get(baseId);
-  const baseContext = baseSegment ? resolveContextKey(baseSegment) : '';
-  const syncedIds: string[] = [];
-  const candidateIds = sourceToSegmentIds.get(normalized) || [];
-  candidateIds.forEach((candidateId) => {
-    const s = segmentById.get(candidateId);
-    if (!s) return;
-    if (scope === 'visible' && !visibleIdSet.has(s.id)) return;
-    if (scope === 'context' && resolveContextKey(s) !== baseContext) return;
-    const tr = getOrCreateTranslation(s.id);
+  const syncedIds = planSyncedSourceUpdates({
+    baseId,
+    sourceText,
+    value,
+    visibleRows,
+    scope: workspaceSyncScopeSelect.value,
+    sourceToSegmentIds: workspaceControllerState.sourceToSegmentIds,
+    segmentById: workspaceControllerState.segmentById,
+    resolveContextKey,
+  });
+  syncedIds.forEach((id) => {
+    const tr = getOrCreateTranslation(id);
     tr.target = value;
     tr.valid = Boolean(value.trim());
-    syncedIds.push(s.id);
   });
   return syncedIds;
 }
 
 function ensureWorkspaceVirtualDom() {
-  if (workspaceVirtualSpacer && workspaceVirtualContent) return;
+  if (workspaceControllerState.workspaceVirtualSpacer && workspaceControllerState.workspaceVirtualContent) return;
   workspaceListDiv.innerHTML = '';
   workspaceListDiv.style.position = 'relative';
   const spacer = document.createElement('div');
@@ -2410,12 +2407,12 @@ function ensureWorkspaceVirtualDom() {
   content.className = 'workspace-virtual-content';
   spacer.appendChild(content);
   workspaceListDiv.appendChild(spacer);
-  workspaceVirtualSpacer = spacer;
-  workspaceVirtualContent = content;
+  workspaceControllerState.workspaceVirtualSpacer = spacer;
+  workspaceControllerState.workspaceVirtualContent = content;
   workspaceListDiv.addEventListener('scroll', () => {
-    if (workspaceVirtualRenderFrame !== null) return;
-    workspaceVirtualRenderFrame = requestAnimationFrame(() => {
-      workspaceVirtualRenderFrame = null;
+    if (workspaceControllerState.workspaceVirtualRenderFrame !== null) return;
+    workspaceControllerState.workspaceVirtualRenderFrame = requestAnimationFrame(() => {
+      workspaceControllerState.workspaceVirtualRenderFrame = null;
       renderWorkspaceWindow();
     });
   });
@@ -2423,9 +2420,9 @@ function ensureWorkspaceVirtualDom() {
 
 function renderWorkspaceWindow() {
   ensureWorkspaceVirtualDom();
-  if (!workspaceVirtualSpacer || !workspaceVirtualContent) return;
-  visibleTargetTextareaMap.clear();
-  const rows = workspaceRowsCache;
+  if (!workspaceControllerState.workspaceVirtualSpacer || !workspaceControllerState.workspaceVirtualContent) return;
+  workspaceControllerState.visibleTargetTextareaMap.clear();
+  const rows = workspaceControllerState.workspaceRowsCache;
   const { start, end, paddingTop } = computeVirtualWindow({
     totalCount: rows.length,
     scrollTop: workspaceListDiv.scrollTop,
@@ -2433,9 +2430,9 @@ function renderWorkspaceWindow() {
     rowHeight: WORKSPACE_ROW_HEIGHT,
     overscan: WORKSPACE_OVERSCAN,
   });
-  workspaceVirtualSpacer.style.height = `${rows.length * WORKSPACE_ROW_HEIGHT}px`;
-  workspaceVirtualContent.style.transform = `translateY(${paddingTop}px)`;
-  workspaceVirtualContent.innerHTML = '';
+  workspaceControllerState.workspaceVirtualSpacer.style.height = `${rows.length * WORKSPACE_ROW_HEIGHT}px`;
+  workspaceControllerState.workspaceVirtualContent.style.transform = `translateY(${paddingTop}px)`;
+  workspaceControllerState.workspaceVirtualContent.innerHTML = '';
   const fragment = document.createDocumentFragment();
   rows.slice(start, end).forEach((s) => {
     const existing = translationMap.get(s.id);
@@ -2464,7 +2461,7 @@ function renderWorkspaceWindow() {
         const syncedIds = syncSameSourceTargets(s.id, s.source, val, rows);
         syncedIds.forEach((id) => {
           if (id === s.id) return;
-          const targetInput = visibleTargetTextareaMap.get(id);
+          const targetInput = workspaceControllerState.visibleTargetTextareaMap.get(id);
           if (!targetInput) return;
           targetInput.value = val;
         });
@@ -2478,28 +2475,28 @@ function renderWorkspaceWindow() {
     div.appendChild(chk);
     div.appendChild(source);
     div.appendChild(target);
-    visibleTargetTextareaMap.set(s.id, target);
+    workspaceControllerState.visibleTargetTextareaMap.set(s.id, target);
     fragment.appendChild(div);
   });
-  workspaceVirtualContent.appendChild(fragment);
+  workspaceControllerState.workspaceVirtualContent.appendChild(fragment);
 }
 
 function refreshWorkspaceRows(resetScroll = false) {
-  workspaceRowsCache = getFilteredSegments();
+  workspaceControllerState.workspaceRowsCache = getFilteredSegments();
   if (resetScroll) {
     workspaceListDiv.scrollTop = 0;
   }
   renderWorkspaceWindow();
-  updateWorkspaceStats(workspaceRowsCache);
+  updateWorkspaceStats(workspaceControllerState.workspaceRowsCache);
 }
 
 function scheduleWorkspaceRefresh(resetScroll = false) {
-  if (resetScroll) workspacePendingResetScroll = true;
-  if (workspaceRefreshTimer) return;
-  workspaceRefreshTimer = setTimeout(() => {
-    workspaceRefreshTimer = null;
-    const shouldResetScroll = workspacePendingResetScroll;
-    workspacePendingResetScroll = false;
+  if (resetScroll) workspaceControllerState.workspacePendingResetScroll = true;
+  if (workspaceControllerState.workspaceRefreshTimer) return;
+  workspaceControllerState.workspaceRefreshTimer = setTimeout(() => {
+    workspaceControllerState.workspaceRefreshTimer = null;
+    const shouldResetScroll = workspaceControllerState.workspacePendingResetScroll;
+    workspaceControllerState.workspacePendingResetScroll = false;
     refreshWorkspaceRows(shouldResetScroll);
   }, 80);
 }
@@ -3563,7 +3560,7 @@ document.getElementById('applyWorkspaceToPoBtn')!.addEventListener('click', asyn
     const contexts = Array.from(workspaceContextInfo.entries());
     for (const [contextKey, context] of contexts) {
       const cfg = { ...baseCfg, modDir: context.modPath, language: context.language };
-      const contextIds = new Set(contextToSegmentIds.get(contextKey) || []);
+      const contextIds = new Set(workspaceControllerState.contextToSegmentIds.get(contextKey) || []);
       const modItems = translations.filter(t => contextIds.has(t.id));
       const validItems = modItems.filter(t => t.valid && t.target.trim());
       const applyItems = validItems.map(t => {
