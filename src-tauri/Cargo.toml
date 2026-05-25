@@ -1,6 +1,6 @@
 [package]
 name = "cataclysm-translator-tauri"
-version = "0.1.0"
+version = "0.4.0"
 description = "Cataclysm Translator"
 authors = ["you"]
 edition = "2021"
