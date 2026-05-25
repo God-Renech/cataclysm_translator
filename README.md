@@ -114,7 +114,8 @@ This repository is prepared in a form that can include that minimal embedded Pyt
 ## Publishing suggestion
 
 - Keep source code in this repository
-- Publish `.msi` and other packaged builds through GitHub Releases
+- Publish `.exe` installer builds through GitHub Releases
+- Treat additional package formats as optional, not primary
 
 ## License
 

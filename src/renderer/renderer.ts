@@ -241,7 +241,7 @@ const metaVersionSpan = document.getElementById('metaVersion') as HTMLSpanElemen
 const APP_META = {
   author: '',
   contact: '',
-  version: '0.3.2'
+  version: '0.4.0'
 };
 
 let segments: Segment[] = [];
