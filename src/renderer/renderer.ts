@@ -25,6 +25,21 @@ import {
   selectAllModPaths,
 } from "./mod-selection.js";
 import { convertPoContent, getTargetPoLanguageCode } from "./po-convert.js";
+import {
+  buildLangWorkflowConfig,
+  getModDirsForRun,
+  pathBaseName,
+  resolveCfgForMod,
+} from "./lang-workflow.js";
+import {
+  closePoTabState,
+  makeContextKey,
+  persistActivePoTabContent,
+  resolvePoTabForLanguage,
+  switchPoTabState,
+  upsertPoTabState,
+  type PoTab,
+} from "./po-tabs.js";
 
 export {};
 
@@ -76,15 +91,7 @@ type TranslationResult = {
   valid: boolean;
 };
 
-type LangWorkflowConfig = {
-  langDir: string;
-  langMode?: 'cbn' | 'cdda';
-  modDir: string;
-  language: string;
-  noStrPlNoS?: boolean;
-  pythonPath?: string;
-  gettextPath?: string;
-};
+type LangWorkflowConfig = import("./lang-workflow.js").LangWorkflowConfig;
 
 type BridgeInlineToLangReport = {
   poPath: string;
@@ -256,7 +263,7 @@ let statusRenderTimer: ReturnType<typeof setTimeout> | null = null;
 let scannedMods: ModItem[] = [];
 const workspaceContextMap = new Map<string, string>();
 const workspaceContextInfo = new Map<string, { modPath: string; language: string; name: string }>();
-let poTabs: { key: string; modPath: string; language: string; name: string; content: string; dirty: boolean }[] = [];
+let poTabs: PoTab[] = [];
 let activePoTabKey = '';
 const requestTimeline: number[] = [];
 const tokenTimeline: { ts: number; tokens: number }[] = [];
@@ -3126,10 +3133,6 @@ function setModSelectionState(checked: boolean) {
   });
 }
 
-function makeContextKey(modPath: string, language: string) {
-  return `${modPath}@@${language}`;
-}
-
 function setPoLanguageSelection(language: string) {
   const optionValues = Array.from(poLanguageInput.options).map((x) => x.value);
   if (optionValues.includes(language)) {
@@ -3143,49 +3146,40 @@ function setPoLanguageSelection(language: string) {
 }
 
 function switchToPoLanguageContext() {
-  persistActivePoTabContent();
+  persistActivePoTabContentFromEditor();
   const language = getPoLanguageValue();
+  const resolved = resolvePoTabForLanguage(poTabs, activePoTabKey, language);
+  activePoTabKey = resolved.activeKey;
+  poEditorInput.value = resolved.activeTab?.content || '';
   if (!language) {
-    activePoTabKey = '';
-    poEditorInput.value = '';
     renderPoTabs();
     return;
   }
-  const active = poTabs.find((x) => x.key === activePoTabKey);
-  if (active && active.language === language) {
-    renderPoTabs();
-    return;
-  }
-  const target = (active?.modPath
-    ? poTabs.find((x) => x.modPath === active.modPath && x.language === language)
-    : undefined) || poTabs.find((x) => x.language === language);
-  if (target) {
-    activePoTabKey = target.key;
-    poEditorInput.value = target.content;
-  } else {
-    activePoTabKey = '';
-    poEditorInput.value = '';
-    if (isModMode()) {
-      setStatus(rt('noPoForLanguage', { language }));
-    }
+  if (!resolved.activeTab && isModMode()) {
+    setStatus(rt('noPoForLanguage', { language }));
   }
   renderPoTabs();
 }
 
-function persistActivePoTabContent() {
-  if (!activePoTabKey) return;
-  const tab = poTabs.find((x) => x.key === activePoTabKey);
-  if (!tab) return;
-  tab.content = poEditorInput.value;
-  tab.dirty = true;
+function persistActivePoTabContentFromEditor() {
+  poTabs = persistActivePoTabContent(poTabs, activePoTabKey, poEditorInput.value);
+}
+
+function getRunMods(fallbackDir: string) {
+  return getModDirsForRun(
+    getSelectedModItems().map((item) => ({ path: item.path, name: item.name })),
+    fallbackDir,
+    modRootDirInput.value,
+    importDirInput.value
+  );
 }
 
 function switchPoTab(key: string) {
-  persistActivePoTabContent();
-  activePoTabKey = key;
-  const tab = poTabs.find((x) => x.key === key);
-  poEditorInput.value = tab?.content || '';
-  if (tab) setPoLanguageSelection(tab.language);
+  persistActivePoTabContentFromEditor();
+  const nextState = switchPoTabState(poTabs, key);
+  activePoTabKey = nextState.activeKey;
+  poEditorInput.value = nextState.activeTab?.content || '';
+  if (nextState.activeTab) setPoLanguageSelection(nextState.activeTab.language);
   renderPoTabs();
 }
 
@@ -3197,36 +3191,20 @@ function closePoTab(key: string) {
     const confirmed = confirm(rt('unsavedPoCloseConfirm'));
     if (!confirmed) return;
   }
-  const wasActive = activePoTabKey === key;
-  poTabs.splice(idx, 1);
-  if (!wasActive) {
-    renderPoTabs();
-    return;
-  }
   const currentLanguage = getPoLanguageValue();
-  const sameLanguageTabs = poTabs.filter((x) => x.language === currentLanguage);
-  if (sameLanguageTabs.length) {
-    switchPoTab(sameLanguageTabs[0].key);
-    return;
-  }
-  activePoTabKey = '';
-  poEditorInput.value = '';
+  const nextState = closePoTabState(poTabs, activePoTabKey, key, currentLanguage);
+  poTabs = nextState.tabs;
+  activePoTabKey = nextState.activeKey;
+  poEditorInput.value = nextState.activeTab?.content || '';
+  if (nextState.activeTab) setPoLanguageSelection(nextState.activeTab.language);
   renderPoTabs();
 }
 
 function upsertPoTab(modPath: string, language: string, name: string, content: string, dirty = false) {
-  const key = makeContextKey(modPath, language);
-  const tab = poTabs.find((x) => x.key === key);
-  if (tab) {
-    tab.content = content;
-    tab.name = name || tab.name;
-    tab.language = language || tab.language;
-    tab.dirty = dirty;
-  } else {
-    poTabs.push({ key, modPath, language, name: name || modPath, content, dirty });
-  }
-  if (!activePoTabKey) activePoTabKey = key;
-  if (activePoTabKey === key) {
+  const nextState = upsertPoTabState(poTabs, activePoTabKey, modPath, language, name, content, dirty);
+  poTabs = nextState.tabs;
+  activePoTabKey = nextState.activeKey;
+  if (activePoTabKey === nextState.affectedKey) {
     poEditorInput.value = content;
     setPoLanguageSelection(language);
   }
@@ -3258,43 +3236,24 @@ function renderPoTabs() {
 }
 
 poEditorInput.addEventListener('input', () => {
-  persistActivePoTabContent();
+  persistActivePoTabContentFromEditor();
   renderPoTabs();
 });
 
-function getModDirsForRun(fallbackDir: string) {
-  const selected = getSelectedModItems();
-  if (selected.length) return selected.map((x) => ({ path: x.path, name: x.name }));
-  const fallback = fallbackDir.trim() || modRootDirInput.value.trim() || importDirInput.value.trim();
-  if (fallback) return [{ path: fallback, name: fallback }];
-  return [];
-}
-
 function getLangWorkflowConfig(options?: { requireLangDir?: boolean }): LangWorkflowConfig | null {
-  const requireLangDir = options?.requireLangDir ?? true;
-  const langDir = langDirInput.value.trim();
   const firstSelected = getSelectedModItems()[0];
-  const modDir = firstSelected?.path || modRootDirInput.value.trim() || importDirInput.value.trim();
-  const language = getPoLanguageValue();
-  if (!modDir || !language) return null;
-  if (requireLangDir && !langDir) return null;
-  return {
-    langDir: langDir || '',
-    langMode: langModeSelect.value === 'cdda' ? 'cdda' : 'cbn',
-    modDir,
-    language,
+  return buildLangWorkflowConfig({
+    requireLangDir: options?.requireLangDir,
+    langDir: langDirInput.value,
+    langModeValue: langModeSelect.value,
+    selectedModPath: firstSelected?.path,
+    modRootDir: modRootDirInput.value,
+    importDir: importDirInput.value,
+    language: getPoLanguageValue(),
     noStrPlNoS: noStrPlNoSInput.checked,
-    pythonPath: pythonPathInput.value.trim() || undefined,
-    gettextPath: gettextPathInput.value.trim() || undefined
-  };
-}
-
-async function resolveCfgForMod(baseCfg: LangWorkflowConfig, modPath: string): Promise<LangWorkflowConfig> {
-  return { ...baseCfg, modDir: modPath };
-}
-
-function pathBaseName(path: string) {
-  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
+    pythonPath: pythonPathInput.value,
+    gettextPath: gettextPathInput.value,
+  });
 }
 
 document.getElementById('chooseModRootDir')!.addEventListener('click', async () => {
@@ -3395,7 +3354,7 @@ bridgeInlineToLangBtn.addEventListener('click', async () => {
   try {
     setBusy(true);
     setStatus(rt('bridgeStartInline'));
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     let successCount = 0;
     let failedCount = 0;
     for (const mod of runMods) {
@@ -3462,7 +3421,7 @@ bridgePoToCodeBtn.addEventListener('click', async () => {
   try {
     setBusy(true);
     setStatus(rt('bridgeStartPoToCode'));
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     let successCount = 0;
     let failedCount = 0;
     for (const mod of runMods) {
@@ -3506,7 +3465,7 @@ bridgeCompileMoBtn.addEventListener('click', async () => {
   }
   try {
     setBusy(true);
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     for (const mod of runMods) {
       setStatus(rt('usingModRun', { name: mod.name }));
       const cfg = await resolveCfgForMod(baseCfg, mod.path);
@@ -3531,7 +3490,7 @@ document.getElementById('preparePoBtn')!.addEventListener('click', async () => {
     return;
   }
   try {
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     for (const mod of runMods) {
       setStatus(rt('usingModRun', { name: mod.name }));
       const cfg = await resolveCfgForMod(baseCfg, mod.path);
@@ -3558,7 +3517,7 @@ document.getElementById('extractPoToWorkspaceBtn')!.addEventListener('click', as
     return;
   }
   try {
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     segments = [];
     clearTranslations();
     selectedIds = new Set();
@@ -3667,7 +3626,7 @@ document.getElementById('genPoBtn')!.addEventListener('click', async () => {
     return;
   }
   try {
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     for (const mod of runMods) {
       const cfg = await resolveCfgForMod(baseCfg, mod.path);
       const path = await translator.langGeneratePo(cfg);
@@ -3692,7 +3651,7 @@ document.getElementById('genPoRewriteBtn')!.addEventListener('click', async () =
     return;
   }
   try {
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     for (const mod of runMods) {
       const cfg = await resolveCfgForMod(baseCfg, mod.path);
       const confirmed = confirm(rt('langRewriteConfirm', { name: mod.name, language: cfg.language }));
@@ -3719,7 +3678,7 @@ document.getElementById('loadPoBtn')!.addEventListener('click', async () => {
     return;
   }
   try {
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     for (const mod of runMods) {
       const cfg = await resolveCfgForMod(baseCfg, mod.path);
       const content = await translator.langReadPo(cfg);
@@ -3744,7 +3703,7 @@ document.getElementById('savePoBtn')!.addEventListener('click', async () => {
     return;
   }
   try {
-    persistActivePoTabContent();
+    persistActivePoTabContentFromEditor();
     if (activePoTabKey) {
       const tab = poTabs.find((x) => x.key === activePoTabKey);
       const cfg = tab
@@ -3776,7 +3735,7 @@ saveAllPoBtn.addEventListener('click', async () => {
     return;
   }
   try {
-    persistActivePoTabContent();
+    persistActivePoTabContentFromEditor();
     const dirtyTabs = poTabs.filter((x) => x.dirty);
     if (!dirtyTabs.length) {
       setStatus(rt('saveAllPoNone'));
@@ -3808,7 +3767,7 @@ cleanupPluralBtn.addEventListener('click', async () => {
   try {
     setBusy(true);
     let totalRemoved = 0;
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     for (const mod of runMods) {
       setStatus(rt('usingModRun', { name: mod.name }));
       const cfg = await resolveCfgForMod(baseCfg, mod.path);
@@ -3843,7 +3802,7 @@ document.getElementById('compileMoBtn')!.addEventListener('click', async () => {
     return;
   }
   try {
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     for (const mod of runMods) {
       setStatus(rt('usingModRun', { name: mod.name }));
       const cfg = await resolveCfgForMod(baseCfg, mod.path);
@@ -3885,7 +3844,7 @@ convertPoBtn.addEventListener('click', async () => {
     const hasChinese = (text: string) => /[\u4e00-\u9fa5]/.test(text);
     let lastContextKey = '';
     
-    const runMods = getModDirsForRun(baseCfg.modDir);
+    const runMods = getRunMods(baseCfg.modDir);
     for (const mod of runMods) {
       setStatus(rt('usingModRun', { name: mod.name }));
       const sourceCfg = await resolveCfgForMod(baseCfg, mod.path);
