@@ -37,13 +37,13 @@ import {
   resolveCfgForMod,
 } from "./lang-workflow.js";
 import {
-  runApplyWorkspaceToPoAction,
-  runCompileMoAction,
   runBridgeInlineAction,
   runBridgePoToCodeAction,
+} from "./lang-actions-bridge.js";
+import {
+  runCompileMoAction,
   runCleanupPluralAction,
   runConvertPoAction,
-  runExtractPoToWorkspaceAction,
   runGeneratePoAction,
   runGeneratePotAction,
   runLoadPoAction,
@@ -51,7 +51,11 @@ import {
   runRegeneratePoAction,
   runSaveAllPoAction,
   runSavePoAction,
-} from "./lang-actions.js";
+} from "./lang-actions-po.js";
+import {
+  runApplyWorkspaceToPoAction,
+  runExtractPoToWorkspaceAction,
+} from "./lang-actions-workspace.js";
 import {
   closePoTabState,
   makeContextKey,
