@@ -91,6 +91,62 @@ export async function runBridgeInlineAction(options: {
   }
 }
 
+export async function runBridgePoToCodeAction(options: {
+  baseCfg: LangWorkflowConfig;
+  outputRoot: string;
+  sourceLangCode: string;
+  targetLangCode: string;
+  runMods: ActionMod[];
+  translator: any;
+  resolveCfgForMod: (baseCfg: LangWorkflowConfig, modPath: string) => Promise<LangWorkflowConfig> | LangWorkflowConfig;
+  pathBaseName: (path: string) => string;
+  setBusy: (busy: boolean) => void;
+  setStatus: (message: string, append?: boolean) => void;
+  rt: (key: any, vars?: Record<string, string | number>) => string;
+}) {
+  try {
+    options.setBusy(true);
+    options.setStatus(options.rt("bridgeStartPoToCode"));
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const mod of options.runMods) {
+      options.setStatus(options.rt("usingModRun", { name: mod.name }));
+      try {
+        const cfg = await options.resolveCfgForMod(options.baseCfg, mod.path);
+        const outputDir = options.runMods.length > 1
+          ? `${options.outputRoot}\\${options.pathBaseName(mod.path)}`
+          : options.outputRoot;
+        const report = await options.translator.langBridgePoToCode(
+          cfg,
+          options.sourceLangCode,
+          options.targetLangCode,
+          outputDir,
+        );
+        options.setStatus(options.rt("bridgePoToCodeDone", {
+          outDir: report.outputDir,
+          replaced: report.replacedTextCount,
+          renamed: report.renamedPathCount,
+        }));
+        successCount += 1;
+      } catch (error: any) {
+        failedCount += 1;
+        options.setStatus(options.rt("bridgePoToCodeModFailed", { name: mod.name, error: error?.message || error }));
+      }
+    }
+
+    options.setStatus(options.rt("bridgePoToCodeBatchSummary", {
+      total: options.runMods.length,
+      success: successCount,
+      failed: failedCount,
+    }));
+  } catch (error: any) {
+    options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
+  } finally {
+    options.setBusy(false);
+  }
+}
+
 export async function runPreparePoAction(options: {
   baseCfg: LangWorkflowConfig;
   runMods: ActionMod[];

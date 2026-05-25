@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  runBridgePoToCodeAction,
   runCompileMoAction,
   runCleanupPluralAction,
   runGeneratePoAction,
@@ -441,4 +442,38 @@ test("runCompileMoAction compiles mo for each mod and reports paths", async () =
     "usingModRun:B",
     "langMoDone:mod-b/lang.mo",
   ]);
+});
+
+test("runBridgePoToCodeAction reports per-mod failures and batch summary", async () => {
+  const statuses = [];
+  let busy = false;
+
+  await runBridgePoToCodeAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    outputRoot: "E:\\output",
+    sourceLangCode: "en",
+    targetLangCode: "zh_CN",
+    runMods: [{ path: "mod-a", name: "A" }, { path: "mod-b", name: "B" }],
+    translator: {
+      langBridgePoToCode: async (cfg, sourceLang, targetLang, outputDir) => {
+        if (cfg.modDir === "mod-b") throw new Error("boom");
+        return {
+          outputDir,
+          replacedTextCount: sourceLang === "en" ? 3 : 0,
+          renamedPathCount: targetLang === "zh_CN" ? 1 : 0,
+        };
+      },
+    },
+    resolveCfgForMod: (cfg, modPath) => ({ ...cfg, modDir: modPath }),
+    pathBaseName: (path) => path,
+    setBusy: (value) => { busy = value; },
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.name ?? vars?.success ?? vars?.failed ?? vars?.outDir ?? ""}`,
+  });
+
+  assert.equal(busy, false);
+  assert.ok(statuses.includes("bridgeStartPoToCode:"));
+  assert.ok(statuses.includes("bridgePoToCodeDone:E:\\output\\mod-a"));
+  assert.ok(statuses.some((item) => item.startsWith("bridgePoToCodeModFailed:B")));
+  assert.ok(statuses.some((item) => item.startsWith("bridgePoToCodeBatchSummary:1")));
 });

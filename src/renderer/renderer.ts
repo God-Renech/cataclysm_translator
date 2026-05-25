@@ -39,6 +39,7 @@ import {
 import {
   runCompileMoAction,
   runBridgeInlineAction,
+  runBridgePoToCodeAction,
   runCleanupPluralAction,
   runExtractPoToWorkspaceAction,
   runGeneratePoAction,
@@ -3397,39 +3398,19 @@ bridgePoToCodeBtn.addEventListener('click', async () => {
   }
   const sourceLangCode = bridgeSourceLangCodeInput.value.trim() || 'en';
   const targetLangCode = bridgeTargetLangCodeInput.value.trim() || baseCfg.language;
-  try {
-    setBusy(true);
-    setStatus(rt('bridgeStartPoToCode'));
-    const runMods = getRunMods(baseCfg.modDir);
-    let successCount = 0;
-    let failedCount = 0;
-    for (const mod of runMods) {
-      setStatus(rt('usingModRun', { name: mod.name }));
-      try {
-        const cfg = await resolveCfgForMod(baseCfg, mod.path);
-        const outputDir = runMods.length > 1 ? `${outputRoot}\\${pathBaseName(mod.path)}` : outputRoot;
-        const report = await translator.langBridgePoToCode(cfg, sourceLangCode, targetLangCode, outputDir);
-        setStatus(rt('bridgePoToCodeDone', {
-          outDir: report.outputDir,
-          replaced: report.replacedTextCount,
-          renamed: report.renamedPathCount
-        }));
-        successCount += 1;
-      } catch (e: any) {
-        failedCount += 1;
-        setStatus(rt('bridgePoToCodeModFailed', { name: mod.name, error: e?.message || e }));
-      }
-    }
-    setStatus(rt('bridgePoToCodeBatchSummary', {
-      total: runMods.length,
-      success: successCount,
-      failed: failedCount
-    }));
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  } finally {
-    setBusy(false);
-  }
+  await runBridgePoToCodeAction({
+    baseCfg,
+    outputRoot,
+    sourceLangCode,
+    targetLangCode,
+    runMods: getRunMods(baseCfg.modDir),
+    translator,
+    resolveCfgForMod,
+    pathBaseName,
+    setBusy,
+    setStatus,
+    rt,
+  });
 });
 
 bridgeCompileMoBtn.addEventListener('click', async () => {
