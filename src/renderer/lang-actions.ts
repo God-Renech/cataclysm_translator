@@ -310,3 +310,61 @@ export async function runSaveAllPoAction(options: {
     options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
   }
 }
+
+export async function runCleanupPluralAction(options: {
+  baseCfg: LangWorkflowConfig;
+  runMods: ActionMod[];
+  translator: any;
+  resolveCfgForMod: (baseCfg: LangWorkflowConfig, modPath: string) => Promise<LangWorkflowConfig> | LangWorkflowConfig;
+  upsertPoTab: (modPath: string, language: string, name: string, content: string, dirty?: boolean) => void;
+  renderPoTabs: () => void;
+  setBusy: (busy: boolean) => void;
+  setStatus: (message: string, append?: boolean) => void;
+  rt: (key: any, vars?: Record<string, string | number>) => string;
+}) {
+  try {
+    options.setBusy(true);
+    let totalRemoved = 0;
+    for (const mod of options.runMods) {
+      options.setStatus(options.rt("usingModRun", { name: mod.name }));
+      const cfg = await options.resolveCfgForMod(options.baseCfg, mod.path);
+      const removed = await options.translator.langCleanupPoPlural(cfg);
+      totalRemoved += removed;
+      if (removed > 0) {
+        const content = await options.translator.langReadPo(cfg);
+        options.upsertPoTab(mod.path, cfg.language, mod.name, content, false);
+      }
+    }
+
+    options.renderPoTabs();
+    if (totalRemoved > 0) {
+      options.setStatus(options.rt("cleanupPluralDone", { count: totalRemoved }));
+    } else {
+      options.setStatus(options.rt("cleanupPluralNone"));
+    }
+  } catch (error: any) {
+    options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
+  } finally {
+    options.setBusy(false);
+  }
+}
+
+export async function runCompileMoAction(options: {
+  baseCfg: LangWorkflowConfig;
+  runMods: ActionMod[];
+  translator: any;
+  resolveCfgForMod: (baseCfg: LangWorkflowConfig, modPath: string) => Promise<LangWorkflowConfig> | LangWorkflowConfig;
+  setStatus: (message: string, append?: boolean) => void;
+  rt: (key: any, vars?: Record<string, string | number>) => string;
+}) {
+  try {
+    for (const mod of options.runMods) {
+      options.setStatus(options.rt("usingModRun", { name: mod.name }));
+      const cfg = await options.resolveCfgForMod(options.baseCfg, mod.path);
+      const path = await options.translator.langCompileMo(cfg);
+      options.setStatus(options.rt("langMoDone", { path }));
+    }
+  } catch (error: any) {
+    options.setStatus(options.rt("langActionFailed", { error: error?.message || error }));
+  }
+}

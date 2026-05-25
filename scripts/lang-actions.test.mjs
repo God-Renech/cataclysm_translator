@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  runCompileMoAction,
+  runCleanupPluralAction,
   runGeneratePoAction,
   runGeneratePotAction,
   runLoadPoAction,
@@ -359,4 +361,84 @@ test("runSaveAllPoAction reports when there is nothing to save", async () => {
   });
 
   assert.deepEqual(statuses, ["saveAllPoNone"]);
+});
+
+test("runCleanupPluralAction refreshes tabs only for changed mods and reports total removed", async () => {
+  const statuses = [];
+  const tabs = [];
+  const events = [];
+  let busy = false;
+
+  await runCleanupPluralAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    runMods: [{ path: "mod-a", name: "A" }, { path: "mod-b", name: "B" }],
+    translator: {
+      langCleanupPoPlural: async (cfg) => cfg.modDir === "mod-a" ? 2 : 0,
+      langReadPo: async (cfg) => `content:${cfg.modDir}`,
+    },
+    resolveCfgForMod: (cfg, modPath) => ({ ...cfg, modDir: modPath }),
+    upsertPoTab: (...args) => tabs.push(args),
+    renderPoTabs: () => events.push("render"),
+    setBusy: (value) => { busy = value; },
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.name ?? vars?.count ?? ""}`,
+  });
+
+  assert.equal(busy, false);
+  assert.deepEqual(tabs, [["mod-a", "zh_CN", "A", "content:mod-a", false]]);
+  assert.deepEqual(events, ["render"]);
+  assert.deepEqual(statuses, [
+    "usingModRun:A",
+    "usingModRun:B",
+    "cleanupPluralDone:2",
+  ]);
+});
+
+test("runCleanupPluralAction reports when nothing was removed", async () => {
+  const statuses = [];
+  let busy = false;
+
+  await runCleanupPluralAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    runMods: [{ path: "mod-a", name: "A" }],
+    translator: {
+      langCleanupPoPlural: async () => 0,
+      langReadPo: async () => {
+        throw new Error("should not read");
+      },
+    },
+    resolveCfgForMod: (cfg, modPath) => ({ ...cfg, modDir: modPath }),
+    upsertPoTab: () => {
+      throw new Error("should not upsert");
+    },
+    renderPoTabs: () => {},
+    setBusy: (value) => { busy = value; },
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.name ?? vars?.count ?? ""}`,
+  });
+
+  assert.equal(busy, false);
+  assert.deepEqual(statuses, ["usingModRun:A", "cleanupPluralNone:"]);
+});
+
+test("runCompileMoAction compiles mo for each mod and reports paths", async () => {
+  const statuses = [];
+
+  await runCompileMoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    runMods: [{ path: "mod-a", name: "A" }, { path: "mod-b", name: "B" }],
+    translator: {
+      langCompileMo: async (cfg) => `${cfg.modDir}/lang.mo`,
+    },
+    resolveCfgForMod: (cfg, modPath) => ({ ...cfg, modDir: modPath }),
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.name ?? vars?.path ?? ""}`,
+  });
+
+  assert.deepEqual(statuses, [
+    "usingModRun:A",
+    "langMoDone:mod-a/lang.mo",
+    "usingModRun:B",
+    "langMoDone:mod-b/lang.mo",
+  ]);
 });

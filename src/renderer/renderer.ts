@@ -37,7 +37,9 @@ import {
   resolveCfgForMod,
 } from "./lang-workflow.js";
 import {
+  runCompileMoAction,
   runBridgeInlineAction,
+  runCleanupPluralAction,
   runExtractPoToWorkspaceAction,
   runGeneratePoAction,
   runGeneratePotAction,
@@ -3704,31 +3706,17 @@ cleanupPluralBtn.addEventListener('click', async () => {
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    setBusy(true);
-    let totalRemoved = 0;
-    const runMods = getRunMods(baseCfg.modDir);
-    for (const mod of runMods) {
-      setStatus(rt('usingModRun', { name: mod.name }));
-      const cfg = await resolveCfgForMod(baseCfg, mod.path);
-      const removed = await translator.langCleanupPoPlural(cfg);
-      totalRemoved += removed;
-      if (removed > 0) {
-        const content = await translator.langReadPo(cfg);
-        upsertPoTab(mod.path, cfg.language, mod.name, content, false);
-      }
-    }
-    renderPoTabs();
-    if (totalRemoved > 0) {
-      setStatus(rt('cleanupPluralDone', { count: totalRemoved }));
-    } else {
-      setStatus(rt('cleanupPluralNone'));
-    }
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  } finally {
-    setBusy(false);
-  }
+  await runCleanupPluralAction({
+    baseCfg,
+    runMods: getRunMods(baseCfg.modDir),
+    translator,
+    resolveCfgForMod,
+    upsertPoTab,
+    renderPoTabs,
+    setBusy,
+    setStatus,
+    rt,
+  });
 });
 
 document.getElementById('compileMoBtn')!.addEventListener('click', async () => {
@@ -3741,17 +3729,14 @@ document.getElementById('compileMoBtn')!.addEventListener('click', async () => {
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    const runMods = getRunMods(baseCfg.modDir);
-    for (const mod of runMods) {
-      setStatus(rt('usingModRun', { name: mod.name }));
-      const cfg = await resolveCfgForMod(baseCfg, mod.path);
-      const path = await translator.langCompileMo(cfg);
-      setStatus(rt('langMoDone', { path }));
-    }
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  }
+  await runCompileMoAction({
+    baseCfg,
+    runMods: getRunMods(baseCfg.modDir),
+    translator,
+    resolveCfgForMod,
+    setStatus,
+    rt,
+  });
 });
 
 convertPoBtn.addEventListener('click', async () => {
