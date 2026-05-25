@@ -37,6 +37,7 @@ import {
   resolveCfgForMod,
 } from "./lang-workflow.js";
 import {
+  runApplyWorkspaceToPoAction,
   runCompileMoAction,
   runBridgeInlineAction,
   runBridgePoToCodeAction,
@@ -3510,42 +3511,17 @@ document.getElementById('applyWorkspaceToPoBtn')!.addEventListener('click', asyn
     alert(rt('langConfigMissing'));
     return;
   }
-  try {
-    const contexts = Array.from(workspaceContextInfo.entries());
-    for (const [contextKey, context] of contexts) {
-      const cfg = { ...baseCfg, modDir: context.modPath, language: context.language };
-      const contextIds = new Set(workspaceControllerState.contextToSegmentIds.get(contextKey) || []);
-      const modItems = translations.filter(t => contextIds.has(t.id));
-      const validItems = modItems.filter(t => t.valid && t.target.trim());
-      const applyItems = validItems.map(t => {
-        const parts = t.id.split('::');
-        const rawId = parts.length >= 3 ? parts[1] : '';
-        return { id: rawId, target: t.target };
-      });
-      setStatus(rt('poApplyStats', {
-        name: context.name,
-        language: context.language,
-        workspace: modItems.length,
-        valid: validItems.length,
-        apply: applyItems.length
-      }));
-      if (!applyItems.length) {
-        setStatus(rt('poAiNoApplied'));
-        continue;
-      }
-      const applied = await translator.langApplyPoTranslations(cfg, applyItems);
-      const newContent = await translator.langReadPo(cfg);
-      upsertPoTab(context.modPath, context.language, context.name, newContent, false);
-      renderPoTabs();
-      if (applied > 0) {
-        setStatus(rt('poAiApplied', { count: applied }));
-      } else {
-        setStatus(rt('poAiNoApplied'));
-      }
-    }
-  } catch (e: any) {
-    setStatus(rt('langActionFailed', { error: e?.message || e }));
-  }
+  await runApplyWorkspaceToPoAction({
+    baseCfg,
+    contexts: Array.from(workspaceContextInfo.entries()),
+    translations,
+    getContextSegmentIds: (contextKey) => workspaceControllerState.contextToSegmentIds.get(contextKey) || [],
+    translator,
+    upsertPoTab,
+    renderPoTabs,
+    setStatus,
+    rt,
+  });
 });
 
 document.getElementById('genPotBtn')!.addEventListener('click', async () => {

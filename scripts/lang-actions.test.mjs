@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  runApplyWorkspaceToPoAction,
   runBridgePoToCodeAction,
   runCompileMoAction,
   runCleanupPluralAction,
@@ -476,4 +477,87 @@ test("runBridgePoToCodeAction reports per-mod failures and batch summary", async
   assert.ok(statuses.includes("bridgePoToCodeDone:E:\\output\\mod-a"));
   assert.ok(statuses.some((item) => item.startsWith("bridgePoToCodeModFailed:B")));
   assert.ok(statuses.some((item) => item.startsWith("bridgePoToCodeBatchSummary:1")));
+});
+
+test("runApplyWorkspaceToPoAction groups workspace items by context and writes back valid targets", async () => {
+  const statuses = [];
+  const tabs = [];
+  const events = [];
+  const applyCalls = [];
+
+  await runApplyWorkspaceToPoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    contexts: [
+      ["mod-a@@zh_CN", { modPath: "mod-a", language: "zh_CN", name: "A" }],
+      ["mod-b@@ja", { modPath: "mod-b", language: "ja", name: "B" }],
+    ],
+    translations: [
+      { id: "mod-a@@zh_CN::entry-1::0", target: "目标一", valid: true },
+      { id: "mod-a@@zh_CN::entry-2::1", target: "   ", valid: true },
+      { id: "mod-a@@zh_CN::entry-3::2", target: "忽略", valid: false },
+      { id: "mod-b@@ja::entry-9::0", target: "訳文", valid: true },
+    ],
+    getContextSegmentIds: (contextKey) => {
+      if (contextKey === "mod-a@@zh_CN") return ["mod-a@@zh_CN::entry-1::0", "mod-a@@zh_CN::entry-2::1", "mod-a@@zh_CN::entry-3::2"];
+      if (contextKey === "mod-b@@ja") return ["mod-b@@ja::entry-9::0"];
+      return [];
+    },
+    translator: {
+      langApplyPoTranslations: async (cfg, items) => {
+        applyCalls.push([cfg.modDir, cfg.language, items]);
+        return items.length;
+      },
+      langReadPo: async (cfg) => `content:${cfg.modDir}:${cfg.language}`,
+    },
+    upsertPoTab: (...args) => tabs.push(args),
+    renderPoTabs: () => events.push("render"),
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.name ?? vars?.count ?? vars?.apply ?? ""}`,
+  });
+
+  assert.deepEqual(applyCalls, [
+    ["mod-a", "zh_CN", [{ id: "entry-1", target: "目标一" }]],
+    ["mod-b", "ja", [{ id: "entry-9", target: "訳文" }]],
+  ]);
+  assert.deepEqual(tabs, [
+    ["mod-a", "zh_CN", "A", "content:mod-a:zh_CN", false],
+    ["mod-b", "ja", "B", "content:mod-b:ja", false],
+  ]);
+  assert.deepEqual(events, ["render", "render"]);
+  assert.ok(statuses.includes("poApplyStats:A"));
+  assert.ok(statuses.includes("poApplyStats:B"));
+  assert.deepEqual(
+    statuses.filter((item) => item.startsWith("poAiApplied:")),
+    ["poAiApplied:1", "poAiApplied:1"],
+  );
+});
+
+test("runApplyWorkspaceToPoAction reports no-applied when a context has no valid targets", async () => {
+  const statuses = [];
+
+  await runApplyWorkspaceToPoAction({
+    baseCfg: { langDir: "L", langMode: "cbn", modDir: "base", language: "zh_CN" },
+    contexts: [["mod-a@@zh_CN", { modPath: "mod-a", language: "zh_CN", name: "A" }]],
+    translations: [
+      { id: "mod-a@@zh_CN::entry-1::0", target: "", valid: true },
+      { id: "mod-a@@zh_CN::entry-2::1", target: "忽略", valid: false },
+    ],
+    getContextSegmentIds: () => ["mod-a@@zh_CN::entry-1::0", "mod-a@@zh_CN::entry-2::1"],
+    translator: {
+      langApplyPoTranslations: async () => {
+        throw new Error("should not apply");
+      },
+      langReadPo: async () => {
+        throw new Error("should not read");
+      },
+    },
+    upsertPoTab: () => {
+      throw new Error("should not upsert");
+    },
+    renderPoTabs: () => {},
+    setStatus: (message) => statuses.push(message),
+    rt: (key, vars) => `${key}:${vars?.name ?? vars?.count ?? vars?.apply ?? ""}`,
+  });
+
+  assert.deepEqual(statuses, ["poApplyStats:A", "poAiNoApplied:"]);
 });
