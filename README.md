@@ -6,7 +6,6 @@ This repository contains the application source code built with:
 
 - TypeScript renderer
 - Tauri (Rust backend)
-- An optional Electron runtime entry kept for compatibility
 
 ## Main capabilities
 
@@ -22,7 +21,7 @@ This repository contains the application source code built with:
 ```text
 source/
 |- src/                # TypeScript source
-|- app/                # Runtime entry files; renderer output is generated here
+|- app/renderer/       # Generated renderer output
 |- scripts/            # Build and helper scripts
 |- src-tauri/          # Tauri backend and packaging config
 |- package.json
@@ -108,7 +107,6 @@ This repository is prepared in a form that can include that minimal embedded Pyt
 
 - `node_modules/`
 - `src-tauri/target/`
-- `src-tauri/runtime/`
 - generated renderer output under `app/renderer/`
 - temporary test folders
 - packaged zip files and local artifacts
@@ -120,4 +118,4 @@ This repository is prepared in a form that can include that minimal embedded Pyt
 
 ## License
 
-No license file is included yet. Add one before making the repository public.
+This repository is licensed under GPL-3.0. See [LICENSE](/E:/project/code/cataclysm_translator/source/LICENSE).

@@ -281,35 +281,7 @@ let workspaceVirtualRenderFrame: number | null = null;
 let workspaceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let workspacePendingResetScroll = false;
 
-const ipcRenderer = (window as any).require?.('electron')?.ipcRenderer;
-const translator = ipcRenderer
-  ? {
-      selectFolder: () => ipcRenderer.invoke('select-folder'),
-      scanSegments: (dir: string, rule: Rule) => ipcRenderer.invoke('scan-segments', dir, rule),
-      translateBatch: (segments: Segment[], config: ApiConfig) => ipcRenderer.invoke('translate-batch', segments, config),
-      export: (dir: string, translations: { id: string; target: string }[], outDir: string, rule: Rule) =>
-        ipcRenderer.invoke('export', dir, translations, outDir, rule),
-      loadUserConfig: () => ipcRenderer.invoke('load-user-config'),
-      saveUserConfig: (content: string) => ipcRenderer.invoke('save-user-config', content),
-      getUserConfigPath: () => ipcRenderer.invoke('get-user-config-path'),
-      savePresetJson: (dir: string, fileName: string, content: string) => ipcRenderer.invoke('save-preset-json', dir, fileName, content),
-      langGeneratePot: (config: LangWorkflowConfig) => ipcRenderer.invoke('lang-generate-pot', config),
-      langGeneratePo: (config: LangWorkflowConfig) => ipcRenderer.invoke('lang-generate-po', config),
-      langRegeneratePo: (config: LangWorkflowConfig) => ipcRenderer.invoke('lang-regenerate-po', config),
-      langReadPo: (config: LangWorkflowConfig) => ipcRenderer.invoke('lang-read-po', config),
-      langWritePo: (config: LangWorkflowConfig, content: string) => ipcRenderer.invoke('lang-write-po', config, content),
-      langExtractPoSegments: (config: LangWorkflowConfig) => ipcRenderer.invoke('lang-extract-po-segments', config),
-      langApplyPoTranslations: (config: LangWorkflowConfig, translations: { id: string; target: string }[]) =>
-        ipcRenderer.invoke('lang-apply-po-translations', config, translations),
-      langCompileMo: (config: LangWorkflowConfig) => ipcRenderer.invoke('lang-compile-mo', config),
-      langCleanupPoPlural: (config: LangWorkflowConfig) => ipcRenderer.invoke('lang-cleanup-po-plural', config),
-      langScanMods: (rootDir: string) => ipcRenderer.invoke('lang-scan-mods', rootDir),
-      langBridgeInlineToLang: (config: LangWorkflowConfig, translatedModDir: string, options: BridgeInlineOptions) =>
-        ipcRenderer.invoke('lang-bridge-inline-to-lang', config, translatedModDir, options),
-      langBridgePoToCode: (config: LangWorkflowConfig, sourceLanguageCode: string, targetLanguageCode: string, outputDir: string) =>
-        ipcRenderer.invoke('lang-bridge-po-to-code', config, sourceLanguageCode, targetLanguageCode, outputDir)
-    }
-  : null;
+const translator = window.translator ?? null;
 
 function resolvePromptLocale(targetLang: string): 'zh-CN' | 'zh-TW' | 'en' {
   const lang = (targetLang || '').toLowerCase();
